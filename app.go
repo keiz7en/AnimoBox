@@ -1043,24 +1043,22 @@ func (a *App) searchAnimeHeaven(query string) ([]AnimeHeavenSearchResult, error)
 	var results []AnimeHeavenSearchResult
 	html := string(body)
 
-	re := regexp.MustCompile(`anime\.php\?([a-z0-9]+)[^>]*class='c'>([^<]+)</a>\s*<span[^>]*>(\d+)</span>`)
+	re := regexp.MustCompile(`anime\.php\?([a-z0-9]+)' class='c'>([^<]+)</a>`)
 	matches := re.FindAllStringSubmatch(html, -1)
 	seen := map[string]bool{}
 	for _, m := range matches {
 		id := m[1]
 		title := strings.TrimSpace(m[2])
-		eps := strings.TrimSpace(m[3])
 		if !seen[id] && title != "" {
 			seen[id] = true
 			results = append(results, AnimeHeavenSearchResult{
 				ID:    id,
 				Title: title,
-				Eps:   eps,
 			})
 		}
 	}
 	if len(results) == 0 {
-		re2 := regexp.MustCompile(`anime\.php\?([a-z0-9]+)[^>]*class='c'>([^<]+)</a>`)
+		re2 := regexp.MustCompile(`anime\.php\?([a-z0-9]+)[^>]*>([^<]+)</a>`)
 		matches2 := re2.FindAllStringSubmatch(html, -1)
 		for _, m := range matches2 {
 			id := m[1]
@@ -1086,14 +1084,6 @@ func (a *App) getAnimeHeavenEpCount(title string) int {
 	if err != nil || len(ahResults) == 0 {
 		return 0
 	}
-	for _, r := range ahResults {
-		if r.Eps != "" {
-			n, err := strconv.Atoi(r.Eps)
-			if err == nil && n > 0 {
-				return n
-			}
-		}
-	}
 	best := ahResults[0]
 	epURL := fmt.Sprintf("https://animeheaven.me/anime.php?%s", best.ID)
 	req, err := http.NewRequest("GET", epURL, nil)
@@ -1112,21 +1102,17 @@ func (a *App) getAnimeHeavenEpCount(title string) int {
 		return 0
 	}
 	html := string(body)
-	re := regexp.MustCompile(`gatea\("([^"]+)",\s*"(\d+)"`)
-	matches := re.FindAllStringSubmatch(html, -1)
-	maxEp := 0
-	for _, m := range matches {
-		n, err := strconv.Atoi(m[2])
-		if err == nil && n > maxEp {
-			maxEp = n
+	re := regexp.MustCompile(`Episodes:\s*<div[^>]*>\s*(\d+)\+?`)
+	if m := re.FindStringSubmatch(html); len(m) > 1 {
+		n, err := strconv.Atoi(m[1])
+		if err == nil && n > 0 {
+			return n
 		}
 	}
-	if maxEp > 0 {
-		return maxEp
-	}
-	re2 := regexp.MustCompile(`onclick='gate\((\d+)\)'`)
-	matches2 := re2.FindAllStringSubmatch(html, -1)
-	for _, m := range matches2 {
+	re2 := regexp.MustCompile(`class=' watch2 bc '>\s*(\d+)`)
+	matches := re2.FindAllStringSubmatch(html, -1)
+	maxEp := 0
+	for _, m := range matches {
 		n, err := strconv.Atoi(m[1])
 		if err == nil && n > maxEp {
 			maxEp = n
