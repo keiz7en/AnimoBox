@@ -22,7 +22,6 @@ export default function Watch() {
   const [loading, setLoading] = useState(true);
   const [playerStatus, setPlayerStatus] = useState<'idle' | 'starting' | 'playing' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
-  const [playerReady, setPlayerReady] = useState(false);
 
   useEffect(() => {
     if (episodeId) loadStreamSources(episodeId);
@@ -32,16 +31,13 @@ export default function Watch() {
   const loadStreamSources = async (epId: string) => {
     setLoading(true);
     setPlayerStatus('idle');
-    setPlayerReady(false);
     try {
       const sources = await GetStreamURL(epId, state.animeTitle || '');
       setStreamSources((sources as any) || []);
       if (sources && sources.length > 0) {
-        const directVideo = sources.find((s: any) => s.type === 'video');
-        const first = directVideo || sources[0];
-        setCurrentSource(first);
-        if (first.links && first.links.length > 0) {
-          setCurrentUrl(first.links[0].url);
+        setCurrentSource(sources[0]);
+        if (sources[0].links && sources[0].links.length > 0) {
+          setCurrentUrl(sources[0].links[0].url);
         }
       }
     } catch (e) {
@@ -62,25 +58,20 @@ export default function Watch() {
 
   const playInVLC = async (url: string) => {
     if (!url) return;
-    if (currentSource?.type === 'embed') {
-      openInBrowser(url);
-      return;
-    }
     setPlayerStatus('starting');
     setErrorMsg('');
     try {
       await InitPlayer('');
-      setPlayerReady(true);
       await PlayInMPV(url);
       setPlayerStatus('playing');
     } catch (err: any) {
       setPlayerStatus('error');
-      setErrorMsg(err?.message || 'Failed to start VLC. Make sure VLC is installed.');
+      setErrorMsg(err?.message || 'Failed to start VLC.');
     }
   };
 
   const openInBrowser = (url: string) => {
-    OpenInBrowser(url).catch(() => window.open(url, '_blank'));
+    OpenInBrowser(url).catch(() => {});
   };
 
   const handleSourceSelect = (source: StreamSource) => {
@@ -88,7 +79,6 @@ export default function Watch() {
     if (source.links && source.links.length > 0) {
       setCurrentUrl(source.links[0].url);
       setPlayerStatus('idle');
-      setPlayerReady(false);
     }
   };
 
@@ -125,9 +115,7 @@ export default function Watch() {
                 style={{ width: 80, height: 80, borderRadius: '50%', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <IconPlayerPlay size={36} style={{ marginLeft: 4 }} />
               </button>
-              <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>
-                {currentSource.type === 'embed' ? 'Open in Browser' : 'Play in VLC'}
-              </span>
+              <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>Play in VLC</span>
             </>
           )}
           {playerStatus === 'starting' && (
@@ -140,7 +128,7 @@ export default function Watch() {
             <div style={{ color: 'var(--accent)', fontSize: 14, textAlign: 'center' }}>
               <IconPlayerPlay size={48} style={{ marginBottom: 8 }} />
               <div>Playing in VLC window</div>
-              <button className="btn btn-outline" onClick={() => { MPVStop(); setPlayerStatus('idle'); setPlayerReady(false); }} style={{ marginTop: 12 }}>
+              <button className="btn btn-outline" onClick={() => { MPVStop(); setPlayerStatus('idle'); }} style={{ marginTop: 12 }}>
                 <IconPlayerStop size={14} /> Stop
               </button>
             </div>
@@ -166,7 +154,7 @@ export default function Watch() {
         </div>
       </div>
 
-      {/* All Sources */}
+      {/* All Servers */}
       {streamSources.length > 0 && (
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: 16, marginBottom: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8 }}>
@@ -180,7 +168,7 @@ export default function Watch() {
                 onClick={() => handleSourceSelect(source)}
                 style={{ justifyContent: 'flex-start', textTransform: 'none', fontSize: 12, gap: 6 }}
               >
-                {source.type === 'video' ? <IconPlayerPlay size={14} /> : <IconExternalLink size={14} />}
+                <IconPlayerPlay size={14} />
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {source.server} {source.links[0]?.quality ? `(${source.links[0].quality})` : ''}
                 </span>

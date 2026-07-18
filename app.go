@@ -710,20 +710,11 @@ func (a *App) GetStreamURL(episodeID string, animeTitle string) ([]StreamSource,
 				videoURL, vidErr := a.getAnimeHeavenVideo(ah.ID, epNumber)
 				if vidErr == nil && videoURL != "" {
 					log.Printf("[Stream] Got URL: %s", videoURL[:min(80, len(videoURL))])
-					isDirectVideo := strings.Contains(strings.ToLower(videoURL), ".mp4")
-					if isDirectVideo {
-						sources = append(sources, StreamSource{
-							Server: "AnimeHeaven",
-							Type:   "video",
-							Links:  []StreamLink{{URL: videoURL, Quality: "720p"}},
-						})
-					} else {
-						sources = append(sources, StreamSource{
-							Server: "AnimeHeaven",
-							Type:   "embed",
-							Links:  []StreamLink{{URL: videoURL, Quality: "auto"}},
-						})
-					}
+					sources = append(sources, StreamSource{
+						Server: "AnimeHeaven",
+						Type:   "video",
+						Links:  []StreamLink{{URL: videoURL, Quality: "auto"}},
+					})
 					break
 				}
 			}
@@ -1179,10 +1170,11 @@ func (a *App) getAniwavesVideo(title string, epNumber string) ([]StreamSource, e
 								Type:   "video",
 								Links:  []StreamLink{{URL: m3u8, Quality: quality}},
 							})
-						} else {
+						} else if srcJSON.Result.URL != "" && !seenURLs[srcJSON.Result.URL] {
+							seenURLs[srcJSON.Result.URL] = true
 							sources = append(sources, StreamSource{
 								Server: sName,
-								Type:   "embed",
+								Type:   "video",
 								Links:  []StreamLink{{URL: srcJSON.Result.URL, Quality: quality}},
 							})
 						}
@@ -1202,7 +1194,7 @@ func (a *App) getAniwavesVideo(title string, epNumber string) ([]StreamSource, e
 				} else {
 					sources = append(sources, StreamSource{
 						Server: sName,
-						Type:   "embed",
+						Type:   "video",
 						Links:  []StreamLink{{URL: srcJSON.Result.URL, Quality: "auto"}},
 					})
 				}
