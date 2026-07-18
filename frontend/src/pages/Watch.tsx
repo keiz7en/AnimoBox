@@ -83,15 +83,12 @@ export default function Watch() {
     window.open(url, '_blank');
   };
 
-  const handleSourceChange = (idx: number) => {
-    if (streamSources[idx]) {
-      const source = streamSources[idx];
-      setCurrentSource(source);
-      if (source.links && source.links.length > 0) {
-        setCurrentUrl(source.links[0].url);
-        setPlayerStatus('idle');
-        setPlayerReady(false);
-      }
+  const handleSourceSelect = (source: StreamSource) => {
+    setCurrentSource(source);
+    if (source.links && source.links.length > 0) {
+      setCurrentUrl(source.links[0].url);
+      setPlayerStatus('idle');
+      setPlayerReady(false);
     }
   };
 
@@ -102,11 +99,6 @@ export default function Watch() {
       </div>
     );
   }
-
-  const videoSources = streamSources.filter(s => s.type === 'video');
-  const embedSources = streamSources.filter(s => s.type === 'embed');
-  const streamingSources = streamSources.filter(s => s.type === 'streaming');
-  const infoSources = streamSources.filter(s => s.type === 'info');
 
   return (
     <div className="page-container fade-in">
@@ -171,89 +163,30 @@ export default function Watch() {
           <button className="btn-icon" onClick={() => loadStreamSources(episodeId || '')} title="Refresh">
             <IconRefresh size={14} />
           </button>
-
-          {playerReady && (
-            <>
-              <button className="btn-icon" onClick={() => openInBrowser(currentUrl)} title="Open in browser">
-                <IconExternalLink size={14} />
-              </button>
-            </>
-          )}
         </div>
       </div>
 
-      {/* Video Sources (Direct .mp4) */}
-      {videoSources.length > 0 && (
+      {/* All Sources */}
+      {streamSources.length > 0 && (
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: 16, marginBottom: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8 }}>
-            DIRECT VIDEO (VLC)
+            SERVERS ({streamSources.length})
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {videoSources.map((source, i) => (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
+            {streamSources.map((source, i) => (
               <button
                 key={i}
                 className={`btn ${currentSource === source ? 'btn-accent' : 'btn-outline'}`}
-                onClick={() => handleSourceChange(streamSources.indexOf(source))}
-                style={{ fontSize: 12 }}
+                onClick={() => handleSourceSelect(source)}
+                style={{ justifyContent: 'flex-start', textTransform: 'none', fontSize: 12, gap: 6 }}
               >
-                <IconPlayerPlay size={14} /> {source.server} ({source.links[0]?.quality})
+                {source.type === 'video' ? <IconPlayerPlay size={14} /> : <IconExternalLink size={14} />}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {source.server} {source.links[0]?.quality ? `(${source.links[0].quality})` : ''}
+                </span>
               </button>
             ))}
           </div>
-        </div>
-      )}
-
-      {/* Embed Sources */}
-      {embedSources.length > 0 && (
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: 16, marginBottom: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8 }}>
-            EMBED PLAYER
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {embedSources.map((source, i) => (
-              <button
-                key={i}
-                className={`btn ${currentSource === source ? 'btn-accent' : 'btn-outline'}`}
-                onClick={() => openInBrowser(source.links[0]?.url || '')}
-                style={{ fontSize: 12 }}
-              >
-                <IconExternalLink size={14} /> {source.server}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Streaming Services */}
-      {streamingSources.length > 0 && (
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: 16, marginBottom: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8 }}>
-            STREAMING SERVICES
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8 }}>
-            {streamingSources.map((source, i) => (
-              <button
-                key={i}
-                className="btn btn-outline"
-                onClick={() => openInBrowser(source.links[0]?.url || '')}
-                style={{ justifyContent: 'flex-start', textTransform: 'none', fontSize: 12 }}
-              >
-                <IconExternalLink size={14} /> {source.server}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Info Sources */}
-      {infoSources.length > 0 && (
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8 }}>
-            MORE INFO
-          </div>
-          <button className="btn btn-outline" onClick={() => openInBrowser(infoSources[0].links[0]?.url || '')} style={{ fontSize: 12 }}>
-            <IconExternalLink size={14} /> View on MyAnimeList
-          </button>
         </div>
       )}
     </div>

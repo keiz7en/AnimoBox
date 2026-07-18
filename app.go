@@ -1113,59 +1113,101 @@ func (a *App) getAniwavesVideo(title string, epNumber string) ([]StreamSource, e
 	}
 
 	linkRe := regexp.MustCompile(`data-link-id="([^"]+)"`)
-	linkMatches := linkRe.FindStringSubmatch(svHTML)
-	if len(linkMatches) < 2 {
+	allLinkMatches := linkRe.FindAllStringSubmatch(svHTML, -1)
+	if len(allLinkMatches) == 0 {
 		return nil, fmt.Errorf("aniwaves: no servers found")
 	}
 
-	linkID := linkMatches[1]
-	log.Printf("[Aniwaves] Using link-id: %s", linkID[:min(40, len(linkID))])
-
-	srcResp, err := aniwavesRequest("GET", "https://aniwaves.ru/ajax/sources?id="+linkID, nil)
-	if err != nil {
-		return nil, fmt.Errorf("aniwaves sources failed: %w", err)
-	}
-	defer srcResp.Body.Close()
-	srcBody, _ := io.ReadAll(srcResp.Body)
-
-	var srcJSON struct {
-		Status int `json:"status"`
-		Result struct {
-			URL     string `json:"url"`
-			Server  int    `json:"server"`
-			Sources []struct {
-				File string `json:"file"`
-			} `json:"sources"`
-		} `json:"result"`
-	}
-	if err := json.Unmarshal(srcBody, &srcJSON); err != nil {
-		return nil, fmt.Errorf("aniwaves: failed to parse source JSON: %w", err)
-	}
+	serverNameRe := regexp.MustCompile(`data-title="([^"]+)"`)
+	allServerNames := serverNameRe.FindAllStringSubmatch(svHTML, -1)
 
 	sources := []StreamSource{}
+	seenURLs := map[string]bool{}
 
-	if len(srcJSON.Result.Sources) > 0 {
-		for _, s := range srcJSON.Result.Sources {
-			if s.File != "" {
-				isDirect := strings.Contains(strings.ToLower(s.File), ".mp4") || strings.Contains(strings.ToLower(s.File), ".m3u8")
-				if isDirect {
+	for i, lm := range allLinkMatches {
+		linkID := lm[1]
+		sName := "Server"
+		if i < len(allServerNames) {
+			sName = strings.TrimSpace(allServerNames[i][1])
+		}
+		log.Printf("[Aniwaves] Server %d: %s (link-id: %s)", i+1, sName, linkID[:min(20, len(linkID))])
+
+		srcResp, err := aniwavesRequest("GET", "https://aniwaves.ru/ajax/sources?id="+linkID, nil)
+		if err != nil {
+			log.Printf("[Aniwaves] Failed to get source for %s: %v", sName, err)
+			continue
+		}
+		srcBody, _ := io.ReadAll(srcResp.Body)
+		srcResp.Body.Close()
+
+		var srcJSON struct {
+			Status int `json:"status"`
+			Result struct {
+				URL     string `json:"url"`
+				Server  int    `json:"server"`
+				Sources []struct {
+					File  string `json:"file"`
+					Label string `json:"label"`
+				} `json:"sources"`
+			} `json:"result"`
+		}
+		if err := json.Unmarshal(srcBody, &srcJSON); err != nil {
+			continue
+		}
+
+		if len(srcJSON.Result.Sources) > 0 {
+			for _, s := range srcJSON.Result.Sources {
+				if s.File != "" && !seenURLs[s.File] {
+					seenURLs[s.File] = true
+					isDirect := strings.Contains(strings.ToLower(s.File), ".mp4") || strings.Contains(strings.ToLower(s.File), ".m3u8")
+					quality := s.Label
+					if quality == "" {
+						quality = "auto"
+					}
+					if isDirect {
+						sources = append(sources, StreamSource{
+							Server: sName,
+							Type:   "video",
+							Links:  []StreamLink{{URL: s.File, Quality: quality}},
+						})
+					} else {
+						m3u8 := tryExtractM3U8(s.File)
+						if m3u8 != "" && !seenURLs[m3u8] {
+							seenURLs[m3u8] = true
+							sources = append(sources, StreamSource{
+								Server: sName,
+								Type:   "video",
+								Links:  []StreamLink{{URL: m3u8, Quality: quality}},
+							})
+						} else {
+							sources = append(sources, StreamSource{
+								Server: sName,
+								Type:   "embed",
+								Links:  []StreamLink{{URL: srcJSON.Result.URL, Quality: quality}},
+							})
+						}
+					}
+				}
+			}
+		} else if srcJSON.Result.URL != "" {
+			if !seenURLs[srcJSON.Result.URL] {
+				seenURLs[srcJSON.Result.URL] = true
+				m3u8 := tryExtractM3U8(srcJSON.Result.URL)
+				if m3u8 != "" {
 					sources = append(sources, StreamSource{
-						Server: "Aniwaves",
+						Server: sName,
 						Type:   "video",
-						Links:  []StreamLink{{URL: s.File, Quality: "auto"}},
+						Links:  []StreamLink{{URL: m3u8, Quality: "auto"}},
+					})
+				} else {
+					sources = append(sources, StreamSource{
+						Server: sName,
+						Type:   "embed",
+						Links:  []StreamLink{{URL: srcJSON.Result.URL, Quality: "auto"}},
 					})
 				}
 			}
 		}
-	}
-
-	if len(sources) == 0 && srcJSON.Result.URL != "" {
-		log.Printf("[Aniwaves] Got embed URL: %s", srcJSON.Result.URL[:min(80, len(srcJSON.Result.URL))])
-		sources = append(sources, StreamSource{
-			Server: "Aniwaves",
-			Type:   "embed",
-			Links:  []StreamLink{{URL: srcJSON.Result.URL, Quality: "auto"}},
-		})
 	}
 
 	if len(sources) == 0 {
@@ -1173,6 +1215,51 @@ func (a *App) getAniwavesVideo(title string, epNumber string) ([]StreamSource, e
 	}
 
 	return sources, nil
+}
+
+func tryExtractM3U8(embedURL string) string {
+	if !strings.Contains(embedURL, "echovideo") && !strings.Contains(embedURL, "vidplay") && !strings.Contains(embedURL, "vidstream") {
+		return ""
+	}
+	req, err := http.NewRequest("GET", embedURL, nil)
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+	req.Header.Set("Referer", "https://aniwaves.ru/")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return ""
+	}
+	html := string(body)
+
+	re := regexp.MustCompile(`(?:file|source|src)\s*[:=]\s*["']([^"']*\.m3u8[^"']*)["']`)
+	m := re.FindStringSubmatch(html)
+	if len(m) > 1 {
+		url := m[1]
+		if !strings.HasPrefix(url, "http") {
+			url = "https:" + url
+		}
+		return url
+	}
+
+	re2 := regexp.MustCompile(`["']([^"']*master\.m3u8[^"']*)["']`)
+	m2 := re2.FindStringSubmatch(html)
+	if len(m2) > 1 {
+		url := m2[1]
+		if !strings.HasPrefix(url, "http") {
+			url = "https:" + url
+		}
+		return url
+	}
+
+	return ""
 }
 
 func (a *App) GetRecentEpisodes() ([]TrendingAnime, error) {
