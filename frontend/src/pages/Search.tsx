@@ -34,45 +34,77 @@ export default function Search() {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
+  const [page, setPage] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
 
   useEffect(() => {
     const q = searchParams.get('q');
     if (q) {
       setQuery(q);
-      performSearch(q);
+      setResults([]);
+      setPage(1);
+      setHasMore(true);
+      performSearch(q, 1, false);
     }
   }, [searchParams]);
 
-  const performSearch = async (searchQuery: string) => {
+  const performSearch = async (searchQuery: string, pageNum: number, append: boolean) => {
     const trimmed = searchQuery.trim();
     if (!trimmed) return;
-    setLoading(true);
+    if (append) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+    }
     setSearched(true);
     try {
-      const data = await SearchAnime(trimmed);
-      setResults((data as any) || []);
+      const data = await SearchAnime(trimmed, pageNum);
+      const newResults = (data as any) || [];
+      if (append) {
+        setResults((prev) => [...prev, ...newResults]);
+      } else {
+        setResults(newResults);
+      }
+      setHasMore(newResults.length >= 50);
     } catch (e) {
       console.error('Search failed:', e);
-      setResults([]);
+      if (!append) setResults([]);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
   const handleSearch = () => {
     if (query.trim()) {
+      setResults([]);
+      setPage(1);
+      setHasMore(true);
       navigate(`/search?q=${encodeURIComponent(query.trim())}`);
     }
   };
 
   const handleQuickSearch = (q: string) => {
     setQuery(q);
+    setResults([]);
+    setPage(1);
+    setHasMore(true);
     navigate(`/search?q=${encodeURIComponent(q)}`);
   };
 
   const handleGenreClick = (genre: string) => {
     setQuery(genre);
+    setResults([]);
+    setPage(1);
+    setHasMore(true);
     navigate(`/search?q=${encodeURIComponent(genre)}`);
+  };
+
+  const loadMore = () => {
+    const nextPage = page + 1;
+    setPage(nextPage);
+    performSearch(query, nextPage, true);
   };
 
   return (
@@ -166,6 +198,18 @@ export default function Search() {
               <AnimeCard key={anime.id} anime={anime} />
             ))}
           </div>
+          {hasMore && !loadingMore && (
+            <div style={{ padding: '16px', textAlign: 'center' }}>
+              <button className="btn btn-outline" onClick={loadMore} style={{ minWidth: 160 }}>
+                Load More
+              </button>
+            </div>
+          )}
+          {loadingMore && (
+            <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)' }}>
+              <IconLoader size={24} style={{ animation: 'spin 1s linear infinite' }} />
+            </div>
+          )}
         </>
       ) : null}
     </div>

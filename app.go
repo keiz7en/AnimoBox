@@ -246,6 +246,10 @@ query ($page: Int, $perPage: Int) {
 const searchQuery = `
 query ($search: String, $page: Int, $perPage: Int) {
   Page(page: $page, perPage: $perPage) {
+    pageInfo {
+      total
+      lastPage
+    }
     media(search: $search, type: ANIME) {
       id
       title { romaji english }
@@ -420,7 +424,7 @@ func (a *App) GetTrending() ([]TrendingAnime, error) {
 	return results, nil
 }
 
-func (a *App) SearchAnime(query string) ([]SearchResult, error) {
+func (a *App) SearchAnime(query string, page int) ([]SearchResult, error) {
 	type mediaItem struct {
 		ID             int    `json:"id"`
 		Title          struct {
@@ -436,25 +440,31 @@ func (a *App) SearchAnime(query string) ([]SearchResult, error) {
 		Status      *string `json:"status"`
 	}
 
+	if page < 1 {
+		page = 1
+	}
+
 	var resp struct {
 		Data struct {
-			Page struct {
-				Media []mediaItem `json:"media"`
-			} `json:"Page"`
+			PageInfo struct {
+				Total   int `json:"total"`
+				LastPage int `json:"lastPage"`
+			} `json:"PageInfo"`
+			Media []mediaItem `json:"media"`
 		} `json:"data"`
 	}
 
 	err := a.anilistQuery(searchQuery, map[string]interface{}{
 		"search":  strings.TrimSpace(query),
-		"page":    1,
-		"perPage": 24,
+		"page":    page,
+		"perPage": 50,
 	}, &resp)
 	if err != nil {
 		return nil, err
 	}
 
 	var results []SearchResult
-	for _, item := range resp.Data.Page.Media {
+	for _, item := range resp.Data.Media {
 		title := anilistTitle(item.Title)
 		img := anilistImage(item.CoverImage)
 		score := ""

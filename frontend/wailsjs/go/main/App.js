@@ -134,8 +134,8 @@ export function SaveLibraryToFile() {
   return window['go']['main']['App']['SaveLibraryToFile']();
 }
 
-export function SearchAnime(arg1) {
-  return window['go']['main']['App']['SearchAnime'](arg1);
+export function SearchAnime(arg1, arg2) {
+  return window['go']['main']['App']['SearchAnime'](arg1, arg2);
 }
 
 export function SetSetting(arg1, arg2) {

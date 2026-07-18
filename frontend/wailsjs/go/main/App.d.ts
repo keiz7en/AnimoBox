@@ -68,7 +68,7 @@ export function RemoveFromLibrary(arg1:string):Promise<void>;
 
 export function SaveLibraryToFile():Promise<void>;
 
-export function SearchAnime(arg1:string):Promise<Array<main.SearchResult>>;
+export function SearchAnime(arg1:string,arg2:number):Promise<Array<main.SearchResult>>;
 
 export function SetSetting(arg1:string,arg2:string):Promise<void>;
 
