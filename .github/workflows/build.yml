@@ -72,8 +72,9 @@ jobs:
 
       - name: Create deb package
         run: |
-          VERSION="${GITHUB_REF_NAME:-dev}"
+          VERSION="${GITHUB_REF_NAME:-1.1.1}"
           VERSION="${VERSION#v}"
+          if [[ ! "$VERSION" =~ ^[0-9] ]]; then VERSION="1.1.1"; fi
           PKG="animobox_${VERSION}_amd64"
           mkdir -p "${PKG}/DEBIAN"
           mkdir -p "${PKG}/usr/bin"
