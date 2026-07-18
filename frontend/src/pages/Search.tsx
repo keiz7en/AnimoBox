@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import AnimeCard from '../components/AnimeCard';
 import { SearchResult } from '../types';
-import { IconSearch, IconX, IconStar, IconFlame, IconBolt, IconHeart, IconSword, IconGhost, IconLoader, IconTrophy, IconClock, IconCalendar, IconMenu2 } from '@tabler/icons-react';
+import { IconSearch, IconX, IconStar, IconFlame, IconBolt, IconHeart, IconSword, IconGhost, IconLoader, IconTrophy, IconCalendar } from '@tabler/icons-react';
 import { SearchAnime, GetTopAnime, GetSchedule } from '../../wailsjs/go/main/App';
 
 const QUICK_SEARCHES = [
@@ -16,20 +16,15 @@ const QUICK_SEARCHES = [
   { label: 'Dragon Ball', icon: IconBolt },
   { label: 'Fullmetal Alchemist', icon: IconStar },
   { label: 'Death Note', icon: IconGhost },
-  { label: 'Sword Art Online', icon: IconSword },
-  { label: 'Chainsaw Man', icon: IconSword },
 ];
 
 const ALL_GENRES = [
-  "Action", "Adventure", "Boys Love", "Cars", "Comedy", "Dementia",
-  "Demons", "Drama", "Ecchi", "Erotica", "Fantasy", "Game",
-  "Girls Love", "Gourmet", "Harem", "Historical", "Horror", "Isekai",
-  "Josei", "Kids", "Magic", "Mahou Shoujo", "Martial Arts", "Mecha",
-  "Military", "Music", "Mystery", "Parody", "Police", "Psychological",
-  "Romance", "Samurai", "School", "Sci-Fi", "Seinen", "Shoujo",
-  "Shoujo Ai", "Shounen", "Shounen Ai", "Slice of Life", "Space",
-  "Sports", "Super Power", "Supernatural", "Suspense", "Thriller",
-  "Vampire",
+  "Action","Adventure","Boys Love","Cars","Comedy","Dementia","Demons","Drama",
+  "Ecchi","Erotica","Fantasy","Game","Girls Love","Gourmet","Harem","Historical",
+  "Horror","Isekai","Josei","Kids","Magic","Mahou Shoujo","Martial Arts","Mecha",
+  "Military","Music","Mystery","Parody","Police","Psychological","Romance","Samurai",
+  "School","Sci-Fi","Seinen","Shoujo","Shoujo Ai","Shounen","Shounen Ai",
+  "Slice of Life","Space","Sports","Super Power","Supernatural","Suspense","Thriller","Vampire",
 ];
 
 type BrowseTab = 'search' | 'top' | 'schedule';
@@ -44,16 +39,34 @@ export default function Search() {
   const [page, setPage] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-
   const [activeTab, setActiveTab] = useState<BrowseTab>('search');
   const [topAnime, setTopAnime] = useState<SearchResult[]>([]);
   const [topPeriod, setTopPeriod] = useState('day');
   const [schedule, setSchedule] = useState<SearchResult[]>([]);
   const [loadingTop, setLoadingTop] = useState(false);
   const [loadingSchedule, setLoadingSchedule] = useState(false);
+  const [showAllGenres, setShowAllGenres] = useState(false);
 
-  const [showGenreList, setShowGenreList] = useState(false);
-  const [genreFilter, setGenreFilter] = useState('');
+  const performSearch = useCallback(async (q: string, pageNum: number, append: boolean) => {
+    const trimmed = q.trim();
+    if (!trimmed) return;
+    if (append) setLoadingMore(true);
+    else setLoading(true);
+    setSearched(true);
+    try {
+      const data = await SearchAnime(trimmed, pageNum);
+      const list = (data as any) || [];
+      if (append) setResults((prev) => [...prev, ...list]);
+      else setResults(list);
+      setHasMore(list.length >= 50);
+    } catch (e) {
+      console.error('Search failed:', e);
+      if (!append) setResults([]);
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }, []);
 
   useEffect(() => {
     const q = searchParams.get('q');
@@ -65,69 +78,31 @@ export default function Search() {
       setActiveTab('search');
       performSearch(q, 1, false);
     }
-  }, [searchParams]);
+  }, [searchParams, performSearch]);
 
   useEffect(() => {
     if (activeTab === 'top') {
-      loadTopAnime(topPeriod);
+      setLoadingTop(true);
+      GetTopAnime(topPeriod).then((d) => { setTopAnime((d as any) || []); setLoadingTop(false); }).catch(() => { setTopAnime([]); setLoadingTop(false); });
     } else if (activeTab === 'schedule') {
-      loadSchedule();
+      setLoadingSchedule(true);
+      GetSchedule().then((d) => { setSchedule((d as any) || []); setLoadingSchedule(false); }).catch(() => { setSchedule([]); setLoadingSchedule(false); });
     }
   }, [activeTab, topPeriod]);
 
-  const performSearch = async (searchQuery: string, pageNum: number, append: boolean) => {
-    const trimmed = searchQuery.trim();
-    if (!trimmed) return;
-    if (append) {
-      setLoadingMore(true);
-    } else {
-      setLoading(true);
-    }
-    setSearched(true);
-    try {
-      const data = await SearchAnime(trimmed, pageNum);
-      const newResults = (data as any) || [];
-      if (append) {
-        setResults((prev) => [...prev, ...newResults]);
-      } else {
-        setResults(newResults);
-      }
-      setHasMore(newResults.length >= 50);
-    } catch (e) {
-      console.error('Search failed:', e);
-      if (!append) setResults([]);
-    } finally {
-      setLoading(false);
-      setLoadingMore(false);
-    }
-  };
-
   const handleSearch = () => {
     if (query.trim()) {
-      setResults([]);
-      setPage(1);
-      setHasMore(true);
-      setActiveTab('search');
       navigate(`/search?q=${encodeURIComponent(query.trim())}`);
     }
   };
 
   const handleQuickSearch = (q: string) => {
     setQuery(q);
-    setResults([]);
-    setPage(1);
-    setHasMore(true);
     navigate(`/search?q=${encodeURIComponent(q)}`);
   };
 
   const handleGenreClick = (genre: string) => {
     setQuery(genre);
-    setGenreFilter(genre);
-    setResults([]);
-    setPage(1);
-    setHasMore(true);
-    setActiveTab('search');
-    setShowGenreList(false);
     navigate(`/search?q=${encodeURIComponent(genre)}`);
   };
 
@@ -136,36 +111,6 @@ export default function Search() {
     setPage(nextPage);
     performSearch(query, nextPage, true);
   };
-
-  const loadTopAnime = async (period: string) => {
-    setLoadingTop(true);
-    try {
-      const data = await GetTopAnime(period);
-      setTopAnime((data as any) || []);
-    } catch (e) {
-      console.error('Failed to load top anime:', e);
-      setTopAnime([]);
-    } finally {
-      setLoadingTop(false);
-    }
-  };
-
-  const loadSchedule = async () => {
-    setLoadingSchedule(true);
-    try {
-      const data = await GetSchedule();
-      setSchedule((data as any) || []);
-    } catch (e) {
-      console.error('Failed to load schedule:', e);
-      setSchedule([]);
-    } finally {
-      setLoadingSchedule(false);
-    }
-  };
-
-  const filteredGenres = genreFilter
-    ? ALL_GENRES.filter(g => g.toLowerCase().includes(genreFilter.toLowerCase()))
-    : ALL_GENRES;
 
   return (
     <div className="page-container fade-in">
@@ -219,12 +164,7 @@ export default function Search() {
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '0 16px 16px' }}>
                 {QUICK_SEARCHES.map((item) => (
-                  <button
-                    key={item.label}
-                    className="btn btn-outline"
-                    onClick={() => handleQuickSearch(item.label)}
-                    style={{ gap: 6 }}
-                  >
+                  <button key={item.label} className="btn btn-outline" onClick={() => handleQuickSearch(item.label)} style={{ gap: 6 }}>
                     <item.icon size={14} />
                     {item.label}
                   </button>
@@ -236,34 +176,19 @@ export default function Search() {
           {!searched && (
             <div style={{ marginBottom: 20 }}>
               <div className="row-header" style={{ justifyContent: 'space-between' }}>
-                <span>
-                  <IconMenu2 size={20} style={{ color: 'var(--accent)', marginRight: 6 }} />
-                  Genres ({ALL_GENRES.length})
-                </span>
-                <button
-                  className="btn btn-outline"
-                  onClick={() => setShowGenreList(!showGenreList)}
-                  style={{ fontSize: 12, padding: '4px 10px' }}
-                >
-                  {showGenreList ? 'Hide' : 'Show All'}
+                <span>Genres ({ALL_GENRES.length})</span>
+                <button className="btn btn-outline" onClick={() => setShowAllGenres(!showAllGenres)} style={{ fontSize: 12, padding: '4px 10px' }}>
+                  {showAllGenres ? 'Show Less' : 'Show All'}
                 </button>
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '0 16px 16px' }}>
-                {(showGenreList ? filteredGenres : ALL_GENRES.slice(0, 20)).map((genre) => (
-                  <button
-                    key={genre}
-                    className="genre-chip"
-                    onClick={() => handleGenreClick(genre)}
-                  >
+                {(showAllGenres ? ALL_GENRES : ALL_GENRES.slice(0, 20)).map((genre) => (
+                  <button key={genre} className="genre-chip" onClick={() => handleGenreClick(genre)}>
                     {genre}
                   </button>
                 ))}
-                {!showGenreList && ALL_GENRES.length > 20 && (
-                  <button
-                    className="genre-chip"
-                    onClick={() => setShowGenreList(true)}
-                    style={{ background: 'var(--accent)', color: '#000', fontWeight: 600 }}
-                  >
+                {!showAllGenres && (
+                  <button className="genre-chip" onClick={() => setShowAllGenres(true)} style={{ background: 'var(--accent)', color: '#000', fontWeight: 600 }}>
                     +{ALL_GENRES.length - 20} more
                   </button>
                 )}
@@ -280,7 +205,6 @@ export default function Search() {
             <div style={{ padding: '60px 16px', textAlign: 'center', color: 'var(--text-muted)' }}>
               <div style={{ fontSize: 48, marginBottom: 8, opacity: 0.3 }}>&#128269;</div>
               <div>No results found for "{query}"</div>
-              <div style={{ fontSize: 12, marginTop: 8 }}>Try different keywords or check spelling</div>
             </div>
           ) : searched ? (
             <>
@@ -295,9 +219,7 @@ export default function Search() {
               </div>
               {hasMore && !loadingMore && (
                 <div style={{ padding: '16px', textAlign: 'center' }}>
-                  <button className="btn btn-outline" onClick={loadMore} style={{ minWidth: 160 }}>
-                    Load More
-                  </button>
+                  <button className="btn btn-outline" onClick={loadMore} style={{ minWidth: 160 }}>Load More</button>
                 </div>
               )}
               {loadingMore && (
@@ -313,22 +235,12 @@ export default function Search() {
       {activeTab === 'top' && (
         <>
           <div className="tab-bar" style={{ marginBottom: 12, marginTop: -4 }}>
-            {[
-              { key: 'day', label: 'Today', icon: IconFlame },
-              { key: 'week', label: 'This Week', icon: IconBolt },
-              { key: 'month', label: 'This Month', icon: IconStar },
-            ].map(({ key, label, icon: Icon }) => (
-              <button
-                key={key}
-                className={`tab ${topPeriod === key ? 'active' : ''}`}
-                onClick={() => setTopPeriod(key)}
-              >
-                <Icon size={14} style={{ verticalAlign: -2, marginRight: 4 }} />
-                {label}
+            {[{ key: 'day', label: 'Today', icon: IconFlame }, { key: 'week', label: 'This Week', icon: IconBolt }, { key: 'month', label: 'This Month', icon: IconStar }].map(({ key, label, icon: Icon }) => (
+              <button key={key} className={`tab ${topPeriod === key ? 'active' : ''}`} onClick={() => setTopPeriod(key)}>
+                <Icon size={14} style={{ verticalAlign: -2, marginRight: 4 }} />{label}
               </button>
             ))}
           </div>
-
           {loadingTop ? (
             <div style={{ padding: '60px 16px', textAlign: 'center', color: 'var(--text-muted)' }}>
               <IconLoader size={32} style={{ marginBottom: 8, animation: 'spin 1s linear infinite' }} />
