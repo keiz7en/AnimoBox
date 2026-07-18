@@ -490,8 +490,10 @@ func (a *App) SearchAnime(query string, page int) ([]SearchResult, error) {
 	genre := isGenre(strings.TrimSpace(query))
 	if genre != "" {
 		params["genre"] = genre
+		params["search"] = nil
 	} else {
 		params["search"] = strings.TrimSpace(query)
+		params["genre"] = nil
 	}
 
 	err := a.anilistQuery(searchQuery, params, &resp)
