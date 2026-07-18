@@ -31,18 +31,25 @@ jobs:
       - name: Build Windows
         run: wails build -platform windows/amd64 -o animobox.exe
 
+      - name: Create zip
+        run: |
+          $VERSION = if ($env:GITHUB_REF_NAME -match '^v?(.*)') { $Matches[1] } else { '1.1.1' }
+          $ZIP = "animobox_${VERSION}_windows_amd64.zip"
+          Compress-Archive -Path "build\bin\animobox.exe", "tools\vlc-3.0.21" -DestinationPath $ZIP
+          echo "ZIP_FILE=$ZIP" >> $env:GITHUB_ENV
+
       - name: Upload to release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: build/bin/animobox.exe
+          files: ${{ env.ZIP_FILE }}
 
       - name: Upload artifact
         if: "!startsWith(github.ref, 'refs/tags/')"
         uses: actions/upload-artifact@v4
         with:
           name: animobox-windows
-          path: build/bin/animobox.exe
+          path: ${{ env.ZIP_FILE }}
 
   build-linux:
     runs-on: ubuntu-22.04
@@ -70,12 +77,12 @@ jobs:
       - name: Build Linux
         run: wails build -platform linux/amd64 -o animobox
 
-      - name: Create deb package
+      - name: Create deb and zip
         run: |
           VERSION="${GITHUB_REF_NAME:-1.1.1}"
           VERSION="${VERSION#v}"
           if [[ ! "$VERSION" =~ ^[0-9] ]]; then VERSION="1.1.1"; fi
-          PKG="animobox_${VERSION}_amd64"
+          PKG="animobox_${VERSION}_linux_amd64"
           mkdir -p "${PKG}/DEBIAN"
           mkdir -p "${PKG}/usr/bin"
           mkdir -p "${PKG}/usr/share/applications"
@@ -84,17 +91,28 @@ jobs:
           chmod +x "${PKG}/usr/bin/animobox"
           printf '[Desktop Entry]\nName=AnimoBox\nExec=/usr/bin/animobox\nIcon=animobox\nType=Application\nCategories=AudioVideo;Video;\n' > "${PKG}/usr/share/applications/animobox.desktop"
           dpkg-deb --build "${PKG}"
+          ZIP="${PKG}.zip"
+          zip -r "$ZIP" build/bin/animobox
           echo "DEB_FILE=${PKG}.deb" >> $GITHUB_ENV
+          echo "ZIP_FILE=$ZIP" >> $GITHUB_ENV
 
-      - name: Upload to release
+      - name: Upload deb to release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ env.DEB_FILE }}
 
-      - name: Upload artifact
+      - name: Upload zip to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ZIP_FILE }}
+
+      - name: Upload artifacts
         if: "!startsWith(github.ref, 'refs/tags/')"
         uses: actions/upload-artifact@v4
         with:
           name: animobox-linux
-          path: ${{ env.DEB_FILE }}
+          path: |
+            ${{ env.DEB_FILE }}
+            ${{ env.ZIP_FILE }}
