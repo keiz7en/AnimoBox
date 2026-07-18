@@ -493,11 +493,13 @@ func (a *App) SearchAnime(query string, page int) ([]SearchResult, error) {
 
 	var resp struct {
 		Data struct {
-			PageInfo struct {
-				Total   int `json:"total"`
-				LastPage int `json:"lastPage"`
-			} `json:"PageInfo"`
-			Media []mediaItem `json:"media"`
+			Page struct {
+				PageInfo struct {
+					Total    int `json:"total"`
+					LastPage int `json:"lastPage"`
+				} `json:"pageInfo"`
+				Media []mediaItem `json:"media"`
+			} `json:"Page"`
 		} `json:"data"`
 	}
 
@@ -521,7 +523,7 @@ func (a *App) SearchAnime(query string, page int) ([]SearchResult, error) {
 	}
 
 	var results []SearchResult
-	for _, item := range resp.Data.Media {
+	for _, item := range resp.Data.Page.Media {
 		title := anilistTitle(item.Title)
 		img := anilistImage(item.CoverImage)
 		score := ""
@@ -600,7 +602,9 @@ func (a *App) GetTopAnime(period string) ([]SearchResult, error) {
 
 	var resp struct {
 		Data struct {
-			Media []mediaItem `json:"media"`
+			Page struct {
+				Media []mediaItem `json:"media"`
+			} `json:"Page"`
 		} `json:"data"`
 	}
 
@@ -614,7 +618,7 @@ func (a *App) GetTopAnime(period string) ([]SearchResult, error) {
 	}
 
 	var results []SearchResult
-	for i, item := range resp.Data.Media {
+	for i, item := range resp.Data.Page.Media {
 		title := anilistTitle(item.Title)
 		img := anilistImage(item.CoverImage)
 		score := ""
@@ -695,7 +699,9 @@ func (a *App) GetSchedule() ([]SearchResult, error) {
 
 	var resp struct {
 		Data struct {
-			Media []mediaItem `json:"media"`
+			Page struct {
+				Media []mediaItem `json:"media"`
+			} `json:"Page"`
 		} `json:"data"`
 	}
 
@@ -708,7 +714,7 @@ func (a *App) GetSchedule() ([]SearchResult, error) {
 	}
 
 	var results []SearchResult
-	for _, item := range resp.Data.Media {
+	for _, item := range resp.Data.Page.Media {
 		title := anilistTitle(item.Title)
 		img := anilistImage(item.CoverImage)
 		score := ""
