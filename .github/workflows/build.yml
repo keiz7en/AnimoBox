@@ -33,8 +33,9 @@ jobs:
 
       - name: Create zip
         run: |
-          $VERSION = if ($env:GITHUB_REF_NAME -match '^v?(.*)') { $Matches[1] } else { '1.1.1' }
-          $ZIP = "animobox_${VERSION}_windows_amd64.zip"
+          $VER = if ($env:GITHUB_REF_NAME -match '^v?(.+)') { $Matches[1] } else { '1.1.1' }
+          if ($VER -notmatch '^\d') { $VER = '1.1.1' }
+          $ZIP = "animobox_${VER}_windows_amd64.zip"
           Compress-Archive -Path "build\bin\animobox.exe", "tools\vlc-3.0.21" -DestinationPath $ZIP
           echo "ZIP_FILE=$ZIP" >> $env:GITHUB_ENV
 
