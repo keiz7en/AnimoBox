@@ -1,0 +1,101 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Build Windows
+        run: wails build -platform windows/amd64 -o animobox.exe
+
+      - name: Upload Windows exe
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/bin/animobox.exe
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Linux deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev gcc
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Build Linux
+        run: wails build -platform linux/amd64 -o animobox
+
+      - name: Create deb package
+        run: |
+          mkdir -p deb/animobox_1.1.1_amd64/DEBIAN
+          mkdir -p deb/animobox_1.1.1_amd64/usr/bin
+          mkdir -p deb/animobox_1.1.1_amd64/usr/share/applications
+          mkdir -p deb/animobox_1.1.1_amd64/usr/share/icons/hicolor/256x256/apps
+
+          cat > deb/animobox_1.1.1_amd64/DEBIAN/control << EOF
+          Package: animobox
+          Version: 1.1.1
+          Section: multimedia
+          Priority: optional
+          Architecture: amd64
+          Depends: libgtk-3-0, libwebkit2gtk-4.1-0, vlc
+          Maintainer: keiz7en
+          Description: AnimoBox - Desktop Anime Streaming App
+          A desktop anime streaming application with VLC player support.
+          EOF
+
+          cp build/bin/animobox deb/animobox_1.1.1_amd64/usr/bin/animobox
+          chmod +x deb/animobox_1.1.1_amd64/usr/bin/animobox
+
+          cat > deb/animobox_1.1.1_amd64/usr/share/applications/animobox.desktop << EOF
+          [Desktop Entry]
+          Name=AnimoBox
+          Exec=/usr/bin/animobox
+          Icon=animobox
+          Type=Application
+          Categories=AudioVideo;Video;
+          EOF
+
+          dpkg-deb --build deb/animobox_1.1.1_amd64
+
+      - name: Upload deb
+        uses: softprops/action-gh-release@v2
+        with:
+          files: deb/animobox_1.1.1_amd64.deb
