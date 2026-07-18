@@ -34,6 +34,9 @@ export interface SearchResult {
   type: string;
   epsCount: string;
   status: string;
+  rank?: number;
+  nextEp?: string;
+  nextTime?: string;
 }
 
 export interface TrendingAnime {

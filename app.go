@@ -66,6 +66,9 @@ type SearchResult struct {
 	Type     string `json:"type"`
 	EpsCount string `json:"epsCount"`
 	Status   string `json:"status"`
+	Rank     int    `json:"rank,omitempty"`
+	NextEp   string `json:"nextEp,omitempty"`
+	NextTime string `json:"nextTime,omitempty"`
 }
 
 type TrendingAnime struct {
@@ -244,13 +247,13 @@ query ($page: Int, $perPage: Int) {
 }`
 
 const searchQuery = `
-query ($search: String, $page: Int, $perPage: Int) {
+query ($search: String, $genre: String, $page: Int, $perPage: Int) {
   Page(page: $page, perPage: $perPage) {
     pageInfo {
       total
       lastPage
     }
-    media(search: $search, type: ANIME) {
+    media(search: $search, genre: $genre, type: ANIME) {
       id
       title { romaji english }
       coverImage { large color }
@@ -424,6 +427,31 @@ func (a *App) GetTrending() ([]TrendingAnime, error) {
 	return results, nil
 }
 
+var allGenres = []string{
+	"Action", "Adventure", "Boys Love", "Cars", "Comedy", "Dementia",
+	"Demons", "Drama", "Ecchi", "Erotica", "Fantasy", "Game",
+	"Girls Love", "Gourmet", "Harem", "Historical", "Horror", "Isekai",
+	"Josei", "Kids", "Magic", "Mahou Shoujo", "Martial Arts", "Mecha",
+	"Military", "Music", "Mystery", "Parody", "Police", "Psychological",
+	"Romance", "Samurai", "School", "Sci-Fi", "Seinen", "Shoujo",
+	"Shoujo Ai", "Shounen", "Shounen Ai", "Slice of Life", "Space",
+	"Sports", "Super Power", "Supernatural", "Suspense", "Thriller",
+	"Vampire",
+}
+
+func isGenre(query string) string {
+	for _, g := range allGenres {
+		if strings.EqualFold(g, query) {
+			return g
+		}
+	}
+	return ""
+}
+
+func (a *App) GetGenres() []string {
+	return allGenres
+}
+
 func (a *App) SearchAnime(query string, page int) ([]SearchResult, error) {
 	type mediaItem struct {
 		ID             int    `json:"id"`
@@ -454,11 +482,19 @@ func (a *App) SearchAnime(query string, page int) ([]SearchResult, error) {
 		} `json:"data"`
 	}
 
-	err := a.anilistQuery(searchQuery, map[string]interface{}{
-		"search":  strings.TrimSpace(query),
+	params := map[string]interface{}{
 		"page":    page,
 		"perPage": 50,
-	}, &resp)
+	}
+
+	genre := isGenre(strings.TrimSpace(query))
+	if genre != "" {
+		params["genre"] = genre
+	} else {
+		params["search"] = strings.TrimSpace(query)
+	}
+
+	err := a.anilistQuery(searchQuery, params, &resp)
 	if err != nil {
 		return nil, err
 	}
@@ -492,6 +528,204 @@ func (a *App) SearchAnime(query string, page int) ([]SearchResult, error) {
 			Type:     typ,
 			EpsCount: epsCount,
 			Status:   status,
+		})
+	}
+
+	return results, nil
+}
+
+const topAnimeQuery = `
+query ($sort: [MediaSort], $page: Int, $perPage: Int) {
+  Page(page: $page, perPage: $perPage) {
+    media(type: ANIME, sort: $sort, status_in: [RELEASING, FINISHED]) {
+      id
+      title { romaji english }
+      coverImage { large color }
+      averageScore
+      format
+      episodes
+      status
+      trending
+    }
+  }
+}`
+
+func (a *App) GetTopAnime(period string) ([]SearchResult, error) {
+	type mediaItem struct {
+		ID             int    `json:"id"`
+		Title          struct {
+			Romaji  *string `json:"romaji"`
+			English *string `json:"english"`
+		} `json:"title"`
+		CoverImage struct {
+			Large *string `json:"large"`
+		} `json:"coverImage"`
+		AverageScore *int    `json:"averageScore"`
+		Format      *string `json:"format"`
+		Episodes    *int    `json:"episodes"`
+		Status      *string `json:"status"`
+		Trending    int     `json:"trending"`
+	}
+
+	sort := "SCORE_DESC"
+	switch period {
+	case "day":
+		sort = "TRENDING_DESC"
+	case "week":
+		sort = "POPULARITY_DESC"
+	case "month":
+		sort = "FAVORITES_DESC"
+	}
+
+	var resp struct {
+		Data struct {
+			Media []mediaItem `json:"media"`
+		} `json:"data"`
+	}
+
+	err := a.anilistQuery(topAnimeQuery, map[string]interface{}{
+		"sort":    sort,
+		"page":    1,
+		"perPage": 25,
+	}, &resp)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []SearchResult
+	for i, item := range resp.Data.Media {
+		title := anilistTitle(item.Title)
+		img := anilistImage(item.CoverImage)
+		score := ""
+		if item.AverageScore != nil {
+			score = fmt.Sprintf("%.1f", float64(*item.AverageScore)/10.0)
+		}
+		epsCount := "?"
+		if item.Episodes != nil {
+			epsCount = strconv.Itoa(*item.Episodes)
+		}
+		typ := ""
+		if item.Format != nil {
+			typ = *item.Format
+		}
+		status := ""
+		if item.Status != nil {
+			status = *item.Status
+		}
+
+		results = append(results, SearchResult{
+			ID:       strconv.Itoa(item.ID),
+			Title:    title,
+			Image:    img,
+			Score:    score,
+			Type:     typ,
+			EpsCount: epsCount,
+			Status:   status,
+			Rank:     i + 1,
+		})
+	}
+
+	return results, nil
+}
+
+const scheduleQuery = `
+query ($page: Int, $perPage: Int) {
+  Page(page: $page, perPage: $perPage) {
+    media(type: ANIME, status: RELEASING, sort: POPULARITY_DESC) {
+      id
+      title { romaji english }
+      coverImage { large color }
+      averageScore
+      format
+      episodes
+      status
+      airingSchedule(notYetAired: true, perPage: 1) {
+        nodes {
+          airingAt
+          episode
+        }
+      }
+    }
+  }
+}`
+
+func (a *App) GetSchedule() ([]SearchResult, error) {
+	type airNode struct {
+		AiringAt int `json:"airingAt"`
+		Episode  int `json:"episode"`
+	}
+	type mediaItem struct {
+		ID             int    `json:"id"`
+		Title          struct {
+			Romaji  *string `json:"romaji"`
+			English *string `json:"english"`
+		} `json:"title"`
+		CoverImage struct {
+			Large *string `json:"large"`
+		} `json:"coverImage"`
+		AverageScore *int    `json:"averageScore"`
+		Format      *string `json:"format"`
+		Episodes    *int    `json:"episodes"`
+		Status      *string `json:"status"`
+		AiringSchedule struct {
+			Nodes []airNode `json:"nodes"`
+		} `json:"airingSchedule"`
+	}
+
+	var resp struct {
+		Data struct {
+			Media []mediaItem `json:"media"`
+		} `json:"data"`
+	}
+
+	err := a.anilistQuery(scheduleQuery, map[string]interface{}{
+		"page":    1,
+		"perPage": 50,
+	}, &resp)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []SearchResult
+	for _, item := range resp.Data.Media {
+		title := anilistTitle(item.Title)
+		img := anilistImage(item.CoverImage)
+		score := ""
+		if item.AverageScore != nil {
+			score = fmt.Sprintf("%.1f", float64(*item.AverageScore)/10.0)
+		}
+		epsCount := "?"
+		if item.Episodes != nil {
+			epsCount = strconv.Itoa(*item.Episodes)
+		}
+		typ := ""
+		if item.Format != nil {
+			typ = *item.Format
+		}
+		status := ""
+		if item.Status != nil {
+			status = *item.Status
+		}
+
+		nextEp := ""
+		nextTime := ""
+		if len(item.AiringSchedule.Nodes) > 0 {
+			n := item.AiringSchedule.Nodes[0]
+			nextEp = strconv.Itoa(n.Episode)
+			t := time.Unix(int64(n.AiringAt), 0)
+			nextTime = t.Format("Mon Jan 2 3:04 PM")
+		}
+
+		results = append(results, SearchResult{
+			ID:       strconv.Itoa(item.ID),
+			Title:    title,
+			Image:    img,
+			Score:    score,
+			Type:     typ,
+			EpsCount: epsCount,
+			Status:   status,
+			NextEp:   nextEp,
+			NextTime: nextTime,
 		})
 	}
 
@@ -1873,15 +2107,6 @@ func (a *App) MaximizeWindow() {
 
 func (a *App) CloseWindow() {
 	wruntime.Quit(a.ctx)
-}
-
-func (a *App) GetGenres() []string {
-	return []string{
-		"Action", "Adventure", "Comedy", "Drama", "Fantasy",
-		"Horror", "Mahou Shoujo", "Mecha", "Music", "Mystery",
-		"Psychological", "Romance", "Sci-Fi", "Slice of Life",
-		"Sports", "Supernatural", "Thriller",
-	}
 }
 
 func (a *App) OpenFile() string {

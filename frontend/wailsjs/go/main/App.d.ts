@@ -36,9 +36,13 @@ export function GetPlatform():Promise<string>;
 
 export function GetRecentEpisodes():Promise<Array<main.TrendingAnime>>;
 
+export function GetSchedule():Promise<Array<main.SearchResult>>;
+
 export function GetSetting(arg1:string):Promise<string>;
 
 export function GetStreamURL(arg1:string,arg2:string):Promise<Array<main.StreamSource>>;
+
+export function GetTopAnime(arg1:string):Promise<Array<main.SearchResult>>;
 
 export function GetTrending():Promise<Array<main.TrendingAnime>>;
 

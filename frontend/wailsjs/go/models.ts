@@ -119,6 +119,9 @@ export namespace main {
 	    type: string;
 	    epsCount: string;
 	    status: string;
+	    rank?: number;
+	    nextEp?: string;
+	    nextTime?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new SearchResult(source);
@@ -133,6 +136,9 @@ export namespace main {
 	        this.type = source["type"];
 	        this.epsCount = source["epsCount"];
 	        this.status = source["status"];
+	        this.rank = source["rank"];
+	        this.nextEp = source["nextEp"];
+	        this.nextTime = source["nextTime"];
 	    }
 	}
 	export class StreamLink {

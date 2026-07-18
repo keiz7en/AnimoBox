@@ -70,12 +70,20 @@ export function GetRecentEpisodes() {
   return window['go']['main']['App']['GetRecentEpisodes']();
 }
 
+export function GetSchedule() {
+  return window['go']['main']['App']['GetSchedule']();
+}
+
 export function GetSetting(arg1) {
   return window['go']['main']['App']['GetSetting'](arg1);
 }
 
 export function GetStreamURL(arg1, arg2) {
   return window['go']['main']['App']['GetStreamURL'](arg1, arg2);
+}
+
+export function GetTopAnime(arg1) {
+  return window['go']['main']['App']['GetTopAnime'](arg1);
 }
 
 export function GetTrending() {
