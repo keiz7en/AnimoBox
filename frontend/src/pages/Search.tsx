@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import AnimeCard from '../components/AnimeCard';
 import { SearchResult } from '../types';
 import { IconSearch, IconX, IconStar, IconFlame, IconBolt, IconHeart, IconSword, IconGhost, IconLoader, IconTrophy, IconClock, IconCalendar, IconMenu2 } from '@tabler/icons-react';
-import { SearchAnime, GetTopAnime, GetSchedule, GetGenres } from '../../wailsjs/go/main/App';
+import { SearchAnime, GetTopAnime, GetSchedule } from '../../wailsjs/go/main/App';
 
 const QUICK_SEARCHES = [
   { label: 'Naruto', icon: IconBolt },

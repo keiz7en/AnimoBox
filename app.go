@@ -247,13 +247,32 @@ query ($page: Int, $perPage: Int) {
 }`
 
 const searchQuery = `
-query ($search: String, $genre: String, $page: Int, $perPage: Int) {
+query ($search: String, $page: Int, $perPage: Int) {
   Page(page: $page, perPage: $perPage) {
     pageInfo {
       total
       lastPage
     }
-    media(search: $search, genre: $genre, type: ANIME) {
+    media(search: $search, type: ANIME) {
+      id
+      title { romaji english }
+      coverImage { large color }
+      averageScore
+      format
+      episodes
+      status
+    }
+  }
+}`
+
+const genreQuery = `
+query ($genre: String, $page: Int, $perPage: Int) {
+  Page(page: $page, perPage: $perPage) {
+    pageInfo {
+      total
+      lastPage
+    }
+    media(genre: $genre, type: ANIME, sort: POPULARITY_DESC) {
       id
       title { romaji english }
       coverImage { large color }
@@ -482,21 +501,21 @@ func (a *App) SearchAnime(query string, page int) ([]SearchResult, error) {
 		} `json:"data"`
 	}
 
-	params := map[string]interface{}{
-		"page":    page,
-		"perPage": 50,
-	}
-
 	genre := isGenre(strings.TrimSpace(query))
+	var err error
 	if genre != "" {
-		params["genre"] = genre
-		params["search"] = nil
+		err = a.anilistQuery(genreQuery, map[string]interface{}{
+			"genre":   genre,
+			"page":    page,
+			"perPage": 50,
+		}, &resp)
 	} else {
-		params["search"] = strings.TrimSpace(query)
-		params["genre"] = nil
+		err = a.anilistQuery(searchQuery, map[string]interface{}{
+			"search":  strings.TrimSpace(query),
+			"page":    page,
+			"perPage": 50,
+		}, &resp)
 	}
-
-	err := a.anilistQuery(searchQuery, params, &resp)
 	if err != nil {
 		return nil, err
 	}
