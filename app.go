@@ -649,11 +649,16 @@ func (a *App) GetAnimeDetails(id string) (*Anime, error) {
 		totalEps = *item.Episodes
 	}
 
-	if totalEps == 0 {
+	isAiring := status == "RELEASING"
+	if isAiring || totalEps == 0 {
 		ahCount := a.getAnimeHeavenEpCount(title)
 		if ahCount > 0 {
-			totalEps = ahCount
-			episodes = strconv.Itoa(ahCount)
+			if isAiring && totalEps > 0 && ahCount < totalEps {
+				totalEps = ahCount
+			} else if totalEps == 0 {
+				totalEps = ahCount
+			}
+			episodes = strconv.Itoa(totalEps)
 			anime.Episodes = episodes
 		}
 	}
