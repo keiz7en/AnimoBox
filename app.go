@@ -1114,6 +1114,16 @@ func (a *App) getAniwavesVideo(title string, epNumber string) ([]StreamSource, e
 
 	sources := []StreamSource{}
 	seenURLs := map[string]bool{}
+	var mu sync.Mutex
+
+	type serverResult struct {
+		sName string
+		url   string
+		quality string
+	}
+
+	var wg sync.WaitGroup
+	srvResults := make([]serverResult, 0, len(allLinkMatches))
 
 	for i, lm := range allLinkMatches {
 		linkID := lm[1]
@@ -1123,83 +1133,63 @@ func (a *App) getAniwavesVideo(title string, epNumber string) ([]StreamSource, e
 		}
 		log.Printf("[Aniwaves] Server %d: %s (link-id: %s)", i+1, sName, linkID[:min(20, len(linkID))])
 
-		srcResp, err := aniwavesRequest("GET", "https://aniwaves.ru/ajax/sources?id="+linkID, nil)
-		if err != nil {
-			log.Printf("[Aniwaves] Failed to get source for %s: %v", sName, err)
-			continue
-		}
-		srcBody, _ := io.ReadAll(srcResp.Body)
-		srcResp.Body.Close()
+		wg.Add(1)
+		go func(lid, sn string) {
+			defer wg.Done()
+			srcResp, err := aniwavesRequest("GET", "https://aniwaves.ru/ajax/sources?id="+lid, nil)
+			if err != nil {
+				log.Printf("[Aniwaves] Failed to get source for %s: %v", sn, err)
+				return
+			}
+			srcBody, _ := io.ReadAll(srcResp.Body)
+			srcResp.Body.Close()
 
-		var srcJSON struct {
-			Status int `json:"status"`
-			Result struct {
-				URL     string `json:"url"`
-				Server  int    `json:"server"`
-				Sources []struct {
-					File  string `json:"file"`
-					Label string `json:"label"`
-				} `json:"sources"`
-			} `json:"result"`
-		}
-		if err := json.Unmarshal(srcBody, &srcJSON); err != nil {
-			continue
-		}
+			var srcJSON struct {
+				Status int `json:"status"`
+				Result struct {
+					URL     string `json:"url"`
+					Server  int    `json:"server"`
+					Sources []struct {
+						File  string `json:"file"`
+						Label string `json:"label"`
+					} `json:"sources"`
+				} `json:"result"`
+			}
+			if err := json.Unmarshal(srcBody, &srcJSON); err != nil {
+				return
+			}
 
-		if len(srcJSON.Result.Sources) > 0 {
-			for _, s := range srcJSON.Result.Sources {
-				if s.File != "" && !seenURLs[s.File] {
-					seenURLs[s.File] = true
-					isDirect := strings.Contains(strings.ToLower(s.File), ".mp4") || strings.Contains(strings.ToLower(s.File), ".m3u8")
-					quality := s.Label
-					if quality == "" {
-						quality = "auto"
-					}
-					if isDirect {
-						sources = append(sources, StreamSource{
-							Server: sName,
-							Type:   "video",
-							Links:  []StreamLink{{URL: s.File, Quality: quality}},
-						})
-					} else {
-						m3u8 := tryExtractM3U8(s.File)
-						if m3u8 != "" && !seenURLs[m3u8] {
-							seenURLs[m3u8] = true
-							sources = append(sources, StreamSource{
-								Server: sName,
-								Type:   "video",
-								Links:  []StreamLink{{URL: m3u8, Quality: quality}},
-							})
-						} else if srcJSON.Result.URL != "" && !seenURLs[srcJSON.Result.URL] {
-							seenURLs[srcJSON.Result.URL] = true
-							sources = append(sources, StreamSource{
-								Server: sName,
-								Type:   "video",
-								Links:  []StreamLink{{URL: srcJSON.Result.URL, Quality: quality}},
-							})
+			if len(srcJSON.Result.Sources) > 0 {
+				for _, s := range srcJSON.Result.Sources {
+					if s.File != "" {
+						q := s.Label
+						if q == "" { q = "auto" }
+						mu.Lock()
+						if !seenURLs[s.File] {
+							seenURLs[s.File] = true
+							srvResults = append(srvResults, serverResult{sName: sn, url: s.File, quality: q})
 						}
+						mu.Unlock()
 					}
 				}
-			}
-		} else if srcJSON.Result.URL != "" {
-			if !seenURLs[srcJSON.Result.URL] {
-				seenURLs[srcJSON.Result.URL] = true
-				m3u8 := tryExtractM3U8(srcJSON.Result.URL)
-				if m3u8 != "" {
-					sources = append(sources, StreamSource{
-						Server: sName,
-						Type:   "video",
-						Links:  []StreamLink{{URL: m3u8, Quality: "auto"}},
-					})
-				} else {
-					sources = append(sources, StreamSource{
-						Server: sName,
-						Type:   "video",
-						Links:  []StreamLink{{URL: srcJSON.Result.URL, Quality: "auto"}},
-					})
+			} else if srcJSON.Result.URL != "" {
+				mu.Lock()
+				if !seenURLs[srcJSON.Result.URL] {
+					seenURLs[srcJSON.Result.URL] = true
+					srvResults = append(srvResults, serverResult{sName: sn, url: srcJSON.Result.URL, quality: "auto"})
 				}
+				mu.Unlock()
 			}
-		}
+		}(linkID, sName)
+	}
+	wg.Wait()
+
+	for _, r := range srvResults {
+		sources = append(sources, StreamSource{
+			Server: r.sName,
+			Type:   "video",
+			Links:  []StreamLink{{URL: r.url, Quality: r.quality}},
+		})
 	}
 
 	if len(sources) == 0 {

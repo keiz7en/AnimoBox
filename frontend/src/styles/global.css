@@ -767,3 +767,28 @@ body {
 [data-tooltip]:hover::after {
   opacity: 1;
 }
+
+/* Disable text selection and blue highlight */
+* {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+input, textarea {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+}
+
+.btn, .btn-outline, .btn-accent, .btn-icon, .ep-btn, .tab, select {
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+}
+
+.btn:focus, .btn-outline:focus, .btn-accent:focus {
+  outline: none;
+  box-shadow: none;
+}
