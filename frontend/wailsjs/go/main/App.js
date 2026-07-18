@@ -118,6 +118,10 @@ export function OpenFolder() {
   return window['go']['main']['App']['OpenFolder']();
 }
 
+export function OpenInBrowser(arg1) {
+  return window['go']['main']['App']['OpenInBrowser'](arg1);
+}
+
 export function PlayInMPV(arg1) {
   return window['go']['main']['App']['PlayInMPV'](arg1);
 }

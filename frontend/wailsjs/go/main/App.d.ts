@@ -60,6 +60,8 @@ export function OpenFile():Promise<string>;
 
 export function OpenFolder():Promise<string>;
 
+export function OpenInBrowser(arg1:string):Promise<void>;
+
 export function PlayInMPV(arg1:string):Promise<void>;
 
 export function RemoveFromLibrary(arg1:string):Promise<void>;

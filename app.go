@@ -1218,9 +1218,6 @@ func (a *App) getAniwavesVideo(title string, epNumber string) ([]StreamSource, e
 }
 
 func tryExtractM3U8(embedURL string) string {
-	if !strings.Contains(embedURL, "echovideo") && !strings.Contains(embedURL, "vidplay") && !strings.Contains(embedURL, "vidstream") {
-		return ""
-	}
 	req, err := http.NewRequest("GET", embedURL, nil)
 	if err != nil {
 		return ""
@@ -1239,20 +1236,29 @@ func tryExtractM3U8(embedURL string) string {
 	}
 	html := string(body)
 
-	re := regexp.MustCompile(`(?:file|source|src)\s*[:=]\s*["']([^"']*\.m3u8[^"']*)["']`)
-	m := re.FindStringSubmatch(html)
-	if len(m) > 1 {
-		url := m[1]
-		if !strings.HasPrefix(url, "http") {
-			url = "https:" + url
+	patterns := []string{
+		`(?:file|source|src|hls)\s*[:=]\s*["']([^"']*\.m3u8[^"']*)["']`,
+		`["'](https?://[^"']*\.m3u8[^"']*)["']`,
+		`["']([^"']*master\.m3u8[^"']*)["']`,
+		`["']([^"']*index[^"']*\.m3u8[^"']*)["']`,
+		`(?:url|link)\s*[:=]\s*["'](https?://[^"']*\.m3u8[^"']*)["']`,
+	}
+	for _, p := range patterns {
+		re := regexp.MustCompile(p)
+		m := re.FindStringSubmatch(html)
+		if len(m) > 1 {
+			url := m[1]
+			if !strings.HasPrefix(url, "http") {
+				url = "https:" + url
+			}
+			return url
 		}
-		return url
 	}
 
-	re2 := regexp.MustCompile(`["']([^"']*master\.m3u8[^"']*)["']`)
-	m2 := re2.FindStringSubmatch(html)
-	if len(m2) > 1 {
-		url := m2[1]
+	re3 := regexp.MustCompile(`["']([^"']+/playlist[^"']*\.m3u8[^"']*)["']`)
+	m3 := re3.FindStringSubmatch(html)
+	if len(m3) > 1 {
+		url := m3[1]
 		if !strings.HasPrefix(url, "http") {
 			url = "https:" + url
 		}
@@ -1554,7 +1560,16 @@ func (a *App) PlayInMPV(url string) error {
 		return fmt.Errorf("vlc not found at %s", vlcBin)
 	}
 
-	cmd := exec.Command(vlcBin, url)
+	args := []string{}
+	if strings.Contains(strings.ToLower(url), ".m3u8") {
+		args = append(args,
+			"--http-referrer=https://aniwaves.ru/",
+			"--http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+		)
+	}
+	args = append(args, url)
+
+	cmd := exec.Command(vlcBin, args...)
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 
@@ -1567,6 +1582,19 @@ func (a *App) PlayInMPV(url string) error {
 	}()
 
 	return nil
+}
+
+func (a *App) OpenInBrowser(url string) {
+	var cmd *exec.Cmd
+	switch sruntime.GOOS {
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "start", strings.ReplaceAll(url, "&", "^&"))
+	case "darwin":
+		cmd = exec.Command("open", url)
+	default:
+		cmd = exec.Command("xdg-open", url)
+	}
+	cmd.Start()
 }
 
 func (a *App) stopMPV() {

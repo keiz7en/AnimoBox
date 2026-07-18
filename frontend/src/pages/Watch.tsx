@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { IconArrowLeft, IconPlayerPlay, IconExternalLink, IconRefresh, IconPlayerStop } from '@tabler/icons-react';
 import { StreamSource } from '../types';
-import { GetStreamURL, InitPlayer, PlayInMPV, MPVStop } from '../../wailsjs/go/main/App';
+import { GetStreamURL, InitPlayer, PlayInMPV, MPVStop, OpenInBrowser } from '../../wailsjs/go/main/App';
 
 interface WatchState {
   animeTitle?: string;
@@ -80,7 +80,7 @@ export default function Watch() {
   };
 
   const openInBrowser = (url: string) => {
-    window.open(url, '_blank');
+    OpenInBrowser(url).catch(() => window.open(url, '_blank'));
   };
 
   const handleSourceSelect = (source: StreamSource) => {
