@@ -31,10 +31,18 @@ jobs:
       - name: Build Windows
         run: wails build -platform windows/amd64 -o animobox.exe
 
-      - name: Upload Windows exe
+      - name: Upload to release
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: build/bin/animobox.exe
+
+      - name: Upload artifact
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        uses: actions/upload-artifact@v4
+        with:
+          name: animobox-windows
+          path: build/bin/animobox.exe
 
   build-linux:
     runs-on: ubuntu-latest
@@ -54,7 +62,7 @@ jobs:
       - name: Install Linux deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev gcc
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev gcc
 
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
@@ -64,27 +72,30 @@ jobs:
 
       - name: Create deb package
         run: |
-          mkdir -p deb/animobox_1.1.1_amd64/DEBIAN
-          mkdir -p deb/animobox_1.1.1_amd64/usr/bin
-          mkdir -p deb/animobox_1.1.1_amd64/usr/share/applications
-          mkdir -p deb/animobox_1.1.1_amd64/usr/share/icons/hicolor/256x256/apps
+          VERSION="${GITHUB_REF_NAME:-dev}"
+          VERSION="${VERSION#v}"
+          PKG="animobox_${VERSION}_amd64"
+          mkdir -p "${PKG}/DEBIAN"
+          mkdir -p "${PKG}/usr/bin"
+          mkdir -p "${PKG}/usr/share/applications"
 
-          cat > deb/animobox_1.1.1_amd64/DEBIAN/control << EOF
+          cat > "${PKG}/DEBIAN/control" << EOF
           Package: animobox
-          Version: 1.1.1
+          Version: ${VERSION}
           Section: multimedia
           Priority: optional
           Architecture: amd64
-          Depends: libgtk-3-0, libwebkit2gtk-4.1-0, vlc
+          Depends: libgtk-3-0, libwebkit2gtk-4.0-0, vlc
           Maintainer: keiz7en
           Description: AnimoBox - Desktop Anime Streaming App
           A desktop anime streaming application with VLC player support.
           EOF
+          sed -i 's/^          //' "${PKG}/DEBIAN/control"
 
-          cp build/bin/animobox deb/animobox_1.1.1_amd64/usr/bin/animobox
-          chmod +x deb/animobox_1.1.1_amd64/usr/bin/animobox
+          cp build/bin/animobox "${PKG}/usr/bin/animobox"
+          chmod +x "${PKG}/usr/bin/animobox"
 
-          cat > deb/animobox_1.1.1_amd64/usr/share/applications/animobox.desktop << EOF
+          cat > "${PKG}/usr/share/applications/animobox.desktop" << EOF
           [Desktop Entry]
           Name=AnimoBox
           Exec=/usr/bin/animobox
@@ -92,10 +103,20 @@ jobs:
           Type=Application
           Categories=AudioVideo;Video;
           EOF
+          sed -i 's/^          //' "${PKG}/usr/share/applications/animobox.desktop"
 
-          dpkg-deb --build deb/animobox_1.1.1_amd64
+          dpkg-deb --build "${PKG}"
+          echo "DEB_FILE=${PKG}.deb" >> $GITHUB_ENV
 
-      - name: Upload deb
+      - name: Upload to release
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: deb/animobox_1.1.1_amd64.deb
+          files: ${{ env.DEB_FILE }}
+
+      - name: Upload artifact
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        uses: actions/upload-artifact@v4
+        with:
+          name: animobox-linux
+          path: ${{ env.DEB_FILE }}
