@@ -78,33 +78,10 @@ jobs:
           mkdir -p "${PKG}/DEBIAN"
           mkdir -p "${PKG}/usr/bin"
           mkdir -p "${PKG}/usr/share/applications"
-
-          cat > "${PKG}/DEBIAN/control" << EOF
-          Package: animobox
-          Version: ${VERSION}
-          Section: multimedia
-          Priority: optional
-          Architecture: amd64
-          Depends: libgtk-3-0, libwebkit2gtk-4.0-0, vlc
-          Maintainer: keiz7en
-          Description: AnimoBox - Desktop Anime Streaming App
-          A desktop anime streaming application with VLC player support.
-          EOF
-          sed -i 's/^          //' "${PKG}/DEBIAN/control"
-
+          printf 'Package: animobox\nVersion: %s\nSection: multimedia\nPriority: optional\nArchitecture: amd64\nDepends: libgtk-3-0, libwebkit2gtk-4.0-0, vlc\nMaintainer: keiz7en\nDescription: AnimoBox - Desktop Anime Streaming App\n A desktop anime streaming application with VLC player support.\n' "$VERSION" > "${PKG}/DEBIAN/control"
           cp build/bin/animobox "${PKG}/usr/bin/animobox"
           chmod +x "${PKG}/usr/bin/animobox"
-
-          cat > "${PKG}/usr/share/applications/animobox.desktop" << EOF
-          [Desktop Entry]
-          Name=AnimoBox
-          Exec=/usr/bin/animobox
-          Icon=animobox
-          Type=Application
-          Categories=AudioVideo;Video;
-          EOF
-          sed -i 's/^          //' "${PKG}/usr/share/applications/animobox.desktop"
-
+          printf '[Desktop Entry]\nName=AnimoBox\nExec=/usr/bin/animobox\nIcon=animobox\nType=Application\nCategories=AudioVideo;Video;\n' > "${PKG}/usr/share/applications/animobox.desktop"
           dpkg-deb --build "${PKG}"
           echo "DEB_FILE=${PKG}.deb" >> $GITHUB_ENV
 
