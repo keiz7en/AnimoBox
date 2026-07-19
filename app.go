@@ -26,8 +26,9 @@ import (
 )
 
 type App struct {
-	ctx context.Context
-	db  *sql.DB
+	ctx         context.Context
+	db          *sql.DB
+	notifStopCh chan struct{}
 }
 
 type Anime struct {
@@ -107,15 +108,16 @@ type AnimeHeavenEpisode struct {
 }
 
 type LibraryAnime struct {
-	ID            int    `json:"id"`
-	AnimeID       string `json:"animeId"`
-	Title         string `json:"title"`
-	Image         string `json:"image"`
-	Status        string `json:"status"`
-	Score         int    `json:"score"`
-	EpisodesWatch int    `json:"episodesWatch"`
-	TotalEpisodes string `json:"totalEpisodes"`
-	UpdatedAt     string `json:"updatedAt"`
+	ID               int    `json:"id"`
+	AnimeID          string `json:"animeId"`
+	Title            string `json:"title"`
+	Image            string `json:"image"`
+	Status           string `json:"status"`
+	Score            int    `json:"score"`
+	EpisodesWatch    int    `json:"episodesWatch"`
+	TotalEpisodes    string `json:"totalEpisodes"`
+	LastKnownEpisodes int   `json:"lastKnownEpisodes"`
+	UpdatedAt        string `json:"updatedAt"`
 }
 
 const anilistURL = "https://graphql.anilist.co"
@@ -135,10 +137,12 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.initDB()
+	a.startNotificationChecker()
 	wruntime.LogInfo(ctx, "AnimoBox started successfully")
 }
 
 func (a *App) shutdown(ctx context.Context) {
+	a.stopNotificationChecker()
 	a.stopMPV()
 	if a.db != nil {
 		a.db.Close()
@@ -167,6 +171,7 @@ func (a *App) initDB() {
 		score INTEGER DEFAULT 0,
 		episodes_watch INTEGER DEFAULT 0,
 		total_episodes TEXT DEFAULT '?',
+		last_known_episodes INTEGER DEFAULT 0,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 	CREATE TABLE IF NOT EXISTS settings (
@@ -178,6 +183,9 @@ func (a *App) initDB() {
 	if err != nil {
 		log.Printf("Failed to create tables: %v", err)
 	}
+
+	// Migration: add last_known_episodes column to existing databases
+	a.db.Exec("ALTER TABLE library ADD COLUMN last_known_episodes INTEGER DEFAULT 0")
 }
 
 func (a *App) anilistQuery(query string, variables map[string]interface{}, result interface{}) error {
@@ -319,7 +327,7 @@ query ($id: Int) {
 const seasonQuery = `
 query ($season: MediaSeason, $seasonYear: Int, $page: Int, $perPage: Int) {
   Page(page: $page, perPage: $perPage) {
-    media(type: ANIME, season: $season, seasonYear: $seasonYear, sort: POPULARITY_DESC) {
+    media(type: ANIME, season: $season, seasonYear: $seasonYear, sort: POPULARITY_DESC, status_in: [RELEASING, NOT_YET_RELEASED]) {
       id
       title { romaji english }
       coverImage { large color }
@@ -328,6 +336,7 @@ query ($season: MediaSeason, $seasonYear: Int, $page: Int, $perPage: Int) {
       episodes
       status
       genres
+      nextAiringEpisode { episode airingAt }
     }
   }
 }`
@@ -335,7 +344,7 @@ query ($season: MediaSeason, $seasonYear: Int, $page: Int, $perPage: Int) {
 const finishedQuery = `
 query ($page: Int, $perPage: Int) {
   Page(page: $page, perPage: $perPage) {
-    media(type: ANIME, status: FINISHED, sort: SCORE_DESC) {
+    media(type: ANIME, status: FINISHED, sort: UPDATED_AT_DESC) {
       id
       title { romaji english }
       coverImage { large color }
@@ -343,6 +352,7 @@ query ($page: Int, $perPage: Int) {
       format
       episodes
       status
+      endDate { year month day }
     }
   }
 }`
@@ -350,7 +360,7 @@ query ($page: Int, $perPage: Int) {
 const upcomingQuery = `
 query ($page: Int, $perPage: Int) {
   Page(page: $page, perPage: $perPage) {
-    media(type: ANIME, status: RELEASING, sort: POPULARITY_DESC) {
+    media(type: ANIME, status: NOT_YET_RELEASED, sort: POPULARITY_DESC) {
       id
       title { romaji english }
       coverImage { large color }
@@ -358,6 +368,24 @@ query ($page: Int, $perPage: Int) {
       format
       episodes
       status
+      startDate { year month day }
+      nextAiringEpisode { episode airingAt }
+    }
+  }
+}`
+
+const newFinishedQuery = `
+query ($page: Int, $perPage: Int) {
+  Page(page: $page, perPage: $perPage) {
+    media(type: ANIME, status: FINISHED, sort: UPDATED_AT_DESC, onList: false) {
+      id
+      title { romaji english }
+      coverImage { large color }
+      averageScore
+      format
+      episodes
+      status
+      endDate { year month day }
     }
   }
 }`
@@ -954,63 +982,159 @@ func (a *App) GetAnimeDetails(id string) (*Anime, error) {
 func (a *App) GetStreamURL(episodeID string, animeTitle string) ([]StreamSource, error) {
 	parts := strings.SplitN(episodeID, "-", 2)
 	epNumber := ""
+	anilistID := ""
 	if len(parts) == 2 {
+		anilistID = parts[0]
 		epNumber = parts[1]
 	}
 
-	sources := []StreamSource{}
-
 	title := strings.TrimSpace(animeTitle)
-	if title == "" {
-		anilistID := ""
-		if len(parts) == 2 {
-			anilistID = parts[0]
-		}
+	var altTitle string
+	if title == "" && anilistID != "" {
 		animeDetails, err := a.GetAnimeDetails(anilistID)
 		if err == nil {
 			title = animeDetails.Title
-		}
-	}
-
-	if title != "" {
-		log.Printf("[Stream] Searching AnimeHeaven for: %s ep %s", title, epNumber)
-		ahResults, searchErr := a.searchAnimeHeaven(title)
-		if searchErr == nil && len(ahResults) > 0 {
-			for _, ah := range ahResults {
-				log.Printf("[Stream] Trying AnimeHeaven: %s (%s)", ah.Title, ah.ID)
-				videoURL, vidErr := a.getAnimeHeavenVideo(ah.ID, epNumber)
-				if vidErr == nil && videoURL != "" {
-					log.Printf("[Stream] Got URL: %s", videoURL[:min(80, len(videoURL))])
-					sources = append(sources, StreamSource{
-						Server: "AnimeHeaven",
-						Type:   "video",
-						Links:  []StreamLink{{URL: videoURL, Quality: "auto"}},
-					})
-					break
-				}
+			if alt, err := a.getAlternateTitle(anilistID); err == nil && alt != "" {
+				altTitle = alt
 			}
 		}
-	}
-
-	if len(sources) == 0 && title != "" {
-		log.Printf("[Stream] AnimeHeaven failed, trying Aniwaves.ru for: %s ep %s", title, epNumber)
-		awSources, awErr := a.getAniwavesVideo(title, epNumber)
-		if awErr == nil {
-			sources = append(sources, awSources...)
-		} else {
-			log.Printf("[Stream] Aniwaves.ru also failed: %v", awErr)
+	} else if title != "" && anilistID != "" {
+		if alt, err := a.getAlternateTitle(anilistID); err == nil && alt != "" {
+			altTitle = alt
 		}
 	}
 
-	if len(sources) == 0 {
-		sources = append(sources, StreamSource{
+	if title == "" {
+		return []StreamSource{{
 			Server: "Unavailable",
 			Type:   "info",
-			Links:  []StreamLink{{URL: "", Quality: "no source found"}},
-		})
+			Links:  []StreamLink{{URL: "", Quality: "anime title could not be determined"}},
+		}}, nil
 	}
 
-	return sources, nil
+	titles := []string{title}
+	if altTitle != "" && altTitle != title {
+		titles = append(titles, altTitle)
+	}
+
+	log.Printf("[Stream] Searching for: %s ep %s (alt: %s)", title, epNumber, altTitle)
+
+	type sourceResult struct {
+		sources []StreamSource
+		err     error
+		server  string
+	}
+
+	var mu sync.Mutex
+	allSources := []StreamSource{}
+	var errs []string
+	var wg sync.WaitGroup
+
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		var ahErr error
+		for _, t := range titles {
+			log.Printf("[Stream] Searching AnimeHeaven for: %s ep %s", t, epNumber)
+			ahSources, err := a.getAnimeHeavenVideoAllResults(t, epNumber)
+			if err == nil && len(ahSources) > 0 {
+				mu.Lock()
+				allSources = append(allSources, ahSources...)
+				mu.Unlock()
+				return
+			}
+			if err != nil {
+				ahErr = err
+			}
+		}
+		mu.Lock()
+		if ahErr != nil {
+			errs = append(errs, fmt.Sprintf("AnimeHeaven: %v", ahErr))
+		} else {
+			errs = append(errs, "AnimeHeaven: no results")
+		}
+		mu.Unlock()
+	}()
+
+	go func() {
+		defer wg.Done()
+		var awErr error
+		for _, t := range titles {
+			log.Printf("[Stream] Searching Aniwaves.ru for: %s ep %s", t, epNumber)
+			awSources, err := a.getAniwavesVideo(t, epNumber)
+			if err == nil && len(awSources) > 0 {
+				mu.Lock()
+				allSources = append(allSources, awSources...)
+				mu.Unlock()
+				return
+			}
+			if err != nil {
+				awErr = err
+			}
+		}
+		mu.Lock()
+		if awErr != nil {
+			errs = append(errs, fmt.Sprintf("Aniwaves: %v", awErr))
+		} else {
+			errs = append(errs, "Aniwaves: no results")
+		}
+		mu.Unlock()
+	}()
+
+	wg.Wait()
+
+	if len(allSources) == 0 {
+		errMsg := "no source found"
+		if len(errs) > 0 {
+			errMsg = strings.Join(errs, "; ")
+		}
+		log.Printf("[Stream] All sources failed: %s", errMsg)
+		allSources = append(allSources, StreamSource{
+			Server: "Unavailable",
+			Type:   "info",
+			Links:  []StreamLink{{URL: "", Quality: errMsg}},
+		})
+	} else {
+		log.Printf("[Stream] Found %d source(s)", len(allSources))
+	}
+
+	return allSources, nil
+}
+
+func (a *App) getAlternateTitle(anilistID string) (string, error) {
+	anilistIDInt, err := strconv.Atoi(anilistID)
+	if err != nil {
+		return "", err
+	}
+
+	type titleItem struct {
+		Romaji  *string `json:"romaji"`
+		English *string `json:"english"`
+	}
+	var resp struct {
+		Data struct {
+			Media struct {
+				Title titleItem `json:"title"`
+			} `json:"Media"`
+		} `json:"data"`
+	}
+
+	err = a.anilistQuery(`query ($id: Int) { Media(id: $id) { title { romaji english } } }`, map[string]interface{}{
+		"id": anilistIDInt,
+	}, &resp)
+	if err != nil {
+		return "", err
+	}
+
+	t := resp.Data.Media.Title
+	if t.Romaji != nil && *t.Romaji != "" {
+		return *t.Romaji, nil
+	}
+	if t.English != nil && *t.English != "" {
+		return *t.English, nil
+	}
+	return "", nil
 }
 
 func min(a, b int) int {
@@ -1077,6 +1201,39 @@ func (a *App) searchAnimeHeaven(query string) ([]AnimeHeavenSearchResult, error)
 		results = results[:5]
 	}
 	return results, nil
+}
+
+func (a *App) getAnimeHeavenVideoAllResults(title string, epNumber string) ([]StreamSource, error) {
+	ahResults, searchErr := a.searchAnimeHeaven(title)
+	if searchErr != nil {
+		return nil, searchErr
+	}
+	if len(ahResults) == 0 {
+		return nil, fmt.Errorf("no results found")
+	}
+
+	epNumbers := []string{epNumber}
+	if len(epNumber) == 1 {
+		epNumbers = append(epNumbers, "0"+epNumber)
+	} else if len(epNumber) > 1 && epNumber[0] == '0' {
+		epNumbers = append(epNumbers, strings.TrimLeft(epNumber, "0"))
+	}
+
+	for _, ah := range ahResults {
+		for _, epTry := range epNumbers {
+			videoURL, vidErr := a.getAnimeHeavenVideo(ah.ID, epTry)
+			if vidErr == nil && videoURL != "" {
+				log.Printf("[Stream] AnimeHeaven got URL from %s: %s", ah.Title, videoURL[:min(80, len(videoURL))])
+				return []StreamSource{{
+					Server: "AnimeHeaven",
+					Type:   "video",
+					Links:  []StreamLink{{URL: videoURL, Quality: "auto"}},
+				}}, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("episode %s not found in %d AnimeHeaven result(s)", epNumber, len(ahResults))
 }
 
 func (a *App) getAnimeHeavenEpCount(title string) int {
@@ -1285,7 +1442,7 @@ func (a *App) searchAniwaves(query string) ([]aniwavesSearchResult, error) {
 			AnimeID: id,
 			Title:   title,
 		})
-		if len(results) >= 3 {
+		if len(results) >= 5 {
 			break
 		}
 	}
@@ -1316,8 +1473,31 @@ func (a *App) getAniwavesVideo(title string, epNumber string) ([]StreamSource, e
 		return nil, fmt.Errorf("aniwaves: no results for %s", title)
 	}
 
-	animeID := results[0].AnimeID
-	log.Printf("[Aniwaves] Using: %s (id=%s)", results[0].Title, animeID)
+	epNumbers := []string{epNumber}
+	if len(epNumber) == 1 {
+		epNumbers = append(epNumbers, "0"+epNumber)
+	} else if len(epNumber) > 1 && epNumber[0] == '0' {
+		epNumbers = append(epNumbers, strings.TrimLeft(epNumber, "0"))
+	}
+
+	var lastErr error
+	for _, result := range results {
+		sources, epErr := a.getAniwavesVideoByID(result, epNumbers)
+		if epErr == nil && len(sources) > 0 {
+			return sources, nil
+		}
+		lastErr = epErr
+	}
+
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, fmt.Errorf("aniwaves: episode %s not found in %d result(s)", epNumber, len(results))
+}
+
+func (a *App) getAniwavesVideoByID(result aniwavesSearchResult, epNumbers []string) ([]StreamSource, error) {
+	animeID := result.AnimeID
+	log.Printf("[Aniwaves] Trying: %s (id=%s)", result.Title, animeID)
 
 	epResp, err := aniwavesRequest("GET", "https://aniwaves.ru/ajax/episode/list/"+animeID, nil)
 	if err != nil {
@@ -1329,24 +1509,16 @@ func (a *App) getAniwavesVideo(title string, epNumber string) ([]StreamSource, e
 		return nil, fmt.Errorf("aniwaves: failed to parse episode JSON: %w", err)
 	}
 
-	epPad := epNumber
-	if len(epNumber) == 1 {
-		epPad = "0" + epNumber
-	}
-
 	epsVal := ""
-	epRe := regexp.MustCompile(`data-ids="(\d+&eps=` + epNumber + `)"`)
-	if m := epRe.FindStringSubmatch(epHTML); len(m) > 1 {
-		epsVal = m[1]
-	}
-	if epsVal == "" {
-		epRe2 := regexp.MustCompile(`data-ids="(\d+&eps=` + epPad + `)"`)
-		if m := epRe2.FindStringSubmatch(epHTML); len(m) > 1 {
+	for _, epTry := range epNumbers {
+		epRe := regexp.MustCompile(`data-ids="(\d+&eps=` + regexp.QuoteMeta(epTry) + `)"`)
+		if m := epRe.FindStringSubmatch(epHTML); len(m) > 1 {
 			epsVal = m[1]
+			break
 		}
 	}
 	if epsVal == "" {
-		return nil, fmt.Errorf("aniwaves: episode %s not found", epNumber)
+		return nil, fmt.Errorf("aniwaves: episode not found")
 	}
 	log.Printf("[Aniwaves] Episode data-ids: %s", epsVal)
 
@@ -1521,6 +1693,10 @@ func (a *App) GetRecentEpisodes() ([]TrendingAnime, error) {
 		season = "FALL"
 	}
 
+	type nextAiring struct {
+		Episode  int `json:"episode"`
+		AiringAt int `json:"airingAt"`
+	}
 	type mediaItem struct {
 		ID             int    `json:"id"`
 		Title          struct {
@@ -1530,9 +1706,10 @@ func (a *App) GetRecentEpisodes() ([]TrendingAnime, error) {
 		CoverImage struct {
 			Large *string `json:"large"`
 		} `json:"coverImage"`
-		AverageScore *int    `json:"averageScore"`
-		Format      *string `json:"format"`
-		Episodes    *int    `json:"episodes"`
+		AverageScore    *int        `json:"averageScore"`
+		Format          *string     `json:"format"`
+		Episodes        *int        `json:"episodes"`
+		NextAiringEpisode *nextAiring `json:"nextAiringEpisode"`
 	}
 
 	var resp struct {
@@ -1570,11 +1747,18 @@ func (a *App) GetRecentEpisodes() ([]TrendingAnime, error) {
 			typ = *item.Format
 		}
 
+		rank := ""
+		if item.NextAiringEpisode != nil && item.NextAiringEpisode.Episode > 0 {
+			rank = fmt.Sprintf("Ep %d", item.NextAiringEpisode.Episode)
+		} else {
+			rank = strconv.Itoa(i + 1)
+		}
+
 		results = append(results, TrendingAnime{
 			ID:    strconv.Itoa(item.ID),
 			Title: title,
 			Image: img,
-			Rank:  strconv.Itoa(i + 1),
+			Rank:  rank,
 			Score: score,
 			Type:  typ,
 			Eps:   eps,
@@ -1585,6 +1769,11 @@ func (a *App) GetRecentEpisodes() ([]TrendingAnime, error) {
 }
 
 func (a *App) GetFinishedAiring() ([]TrendingAnime, error) {
+	type dateInfo struct {
+		Year  *int `json:"year"`
+		Month *int `json:"month"`
+		Day   *int `json:"day"`
+	}
 	type mediaItem struct {
 		ID             int    `json:"id"`
 		Title          struct {
@@ -1594,9 +1783,10 @@ func (a *App) GetFinishedAiring() ([]TrendingAnime, error) {
 		CoverImage struct {
 			Large *string `json:"large"`
 		} `json:"coverImage"`
-		AverageScore *int    `json:"averageScore"`
-		Format      *string `json:"format"`
-		Episodes    *int    `json:"episodes"`
+		AverageScore *int     `json:"averageScore"`
+		Format      *string  `json:"format"`
+		Episodes    *int     `json:"episodes"`
+		EndDate     *dateInfo `json:"endDate"`
 	}
 
 	var resp struct {
@@ -1632,11 +1822,25 @@ func (a *App) GetFinishedAiring() ([]TrendingAnime, error) {
 			typ = *item.Format
 		}
 
+		rank := ""
+		if item.EndDate != nil && item.EndDate.Year != nil {
+			endStr := fmt.Sprintf("%d", *item.EndDate.Year)
+			if item.EndDate.Month != nil {
+				endStr += fmt.Sprintf("-%02d", *item.EndDate.Month)
+			}
+			if item.EndDate.Day != nil {
+				endStr += fmt.Sprintf("-%02d", *item.EndDate.Day)
+			}
+			rank = endStr
+		} else {
+			rank = strconv.Itoa(i + 1)
+		}
+
 		results = append(results, TrendingAnime{
 			ID:    strconv.Itoa(item.ID),
 			Title: title,
 			Image: img,
-			Rank:  strconv.Itoa(i + 1),
+			Rank:  rank,
 			Score: score,
 			Type:  typ,
 			Eps:   eps,
@@ -1647,6 +1851,15 @@ func (a *App) GetFinishedAiring() ([]TrendingAnime, error) {
 }
 
 func (a *App) GetUpcoming() ([]TrendingAnime, error) {
+	type dateInfo struct {
+		Year  *int `json:"year"`
+		Month *int `json:"month"`
+		Day   *int `json:"day"`
+	}
+	type nextAiring struct {
+		Episode  int `json:"episode"`
+		AiringAt int `json:"airingAt"`
+	}
 	type mediaItem struct {
 		ID             int    `json:"id"`
 		Title          struct {
@@ -1656,9 +1869,11 @@ func (a *App) GetUpcoming() ([]TrendingAnime, error) {
 		CoverImage struct {
 			Large *string `json:"large"`
 		} `json:"coverImage"`
-		AverageScore *int    `json:"averageScore"`
-		Format      *string `json:"format"`
-		Episodes    *int    `json:"episodes"`
+		AverageScore    *int        `json:"averageScore"`
+		Format          *string     `json:"format"`
+		Episodes        *int        `json:"episodes"`
+		StartDate       *dateInfo   `json:"startDate"`
+		NextAiringEpisode *nextAiring `json:"nextAiringEpisode"`
 	}
 
 	var resp struct {
@@ -1694,11 +1909,110 @@ func (a *App) GetUpcoming() ([]TrendingAnime, error) {
 			typ = *item.Format
 		}
 
+		rank := ""
+		if item.StartDate != nil && item.StartDate.Year != nil {
+			startStr := fmt.Sprintf("%d", *item.StartDate.Year)
+			if item.StartDate.Month != nil {
+				startStr += fmt.Sprintf("-%02d", *item.StartDate.Month)
+			}
+			if item.StartDate.Day != nil {
+				startStr += fmt.Sprintf("-%02d", *item.StartDate.Day)
+			}
+			rank = startStr
+		} else if item.NextAiringEpisode != nil && item.NextAiringEpisode.AiringAt > 0 {
+			airTime := time.Unix(int64(item.NextAiringEpisode.AiringAt), 0)
+			rank = airTime.Format("Jan 2")
+		} else {
+			rank = strconv.Itoa(i + 1)
+		}
+
 		results = append(results, TrendingAnime{
 			ID:    strconv.Itoa(item.ID),
 			Title: title,
 			Image: img,
-			Rank:  strconv.Itoa(i + 1),
+			Rank:  rank,
+			Score: score,
+			Type:  typ,
+			Eps:   eps,
+		})
+	}
+
+	return results, nil
+}
+
+func (a *App) GetNewFinishedAiring() ([]TrendingAnime, error) {
+	type dateInfo struct {
+		Year  *int `json:"year"`
+		Month *int `json:"month"`
+		Day   *int `json:"day"`
+	}
+	type mediaItem struct {
+		ID             int    `json:"id"`
+		Title          struct {
+			Romaji  *string `json:"romaji"`
+			English *string `json:"english"`
+		} `json:"title"`
+		CoverImage struct {
+			Large *string `json:"large"`
+		} `json:"coverImage"`
+		AverageScore *int      `json:"averageScore"`
+		Format      *string   `json:"format"`
+		Episodes    *int      `json:"episodes"`
+		EndDate     *dateInfo `json:"endDate"`
+	}
+
+	var resp struct {
+		Data struct {
+			Page struct {
+				Media []mediaItem `json:"media"`
+			} `json:"Page"`
+		} `json:"data"`
+	}
+
+	err := a.anilistQuery(newFinishedQuery, map[string]interface{}{
+		"page":    1,
+		"perPage": 25,
+	}, &resp)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []TrendingAnime
+	for i, item := range resp.Data.Page.Media {
+		title := anilistTitle(item.Title)
+		img := anilistImage(item.CoverImage)
+		score := ""
+		if item.AverageScore != nil {
+			score = fmt.Sprintf("%.1f", float64(*item.AverageScore)/10.0)
+		}
+		eps := "?"
+		if item.Episodes != nil {
+			eps = strconv.Itoa(*item.Episodes)
+		}
+		typ := ""
+		if item.Format != nil {
+			typ = *item.Format
+		}
+
+		rank := ""
+		if item.EndDate != nil && item.EndDate.Year != nil {
+			endStr := fmt.Sprintf("%d", *item.EndDate.Year)
+			if item.EndDate.Month != nil {
+				endStr += fmt.Sprintf("-%02d", *item.EndDate.Month)
+			}
+			if item.EndDate.Day != nil {
+				endStr += fmt.Sprintf("-%02d", *item.EndDate.Day)
+			}
+			rank = endStr
+		} else {
+			rank = strconv.Itoa(i + 1)
+		}
+
+		results = append(results, TrendingAnime{
+			ID:    strconv.Itoa(item.ID),
+			Title: title,
+			Image: img,
+			Rank:  rank,
 			Score: score,
 			Type:  typ,
 			Eps:   eps,
@@ -1800,24 +2114,42 @@ func (a *App) PlayInMPV(url string) error {
 	}
 
 	args := []string{}
+
 	if strings.Contains(strings.ToLower(url), ".m3u8") {
 		args = append(args,
 			"--http-referrer=https://aniwaves.ru/",
 			"--http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
 		)
+	} else if strings.Contains(strings.ToLower(url), "animeheaven") {
+		args = append(args,
+			"--http-referrer=https://animeheaven.me/",
+			"--http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+		)
 	}
+
 	args = append(args, url)
+
+	log.Printf("[VLC] Starting: %s", vlcBin)
+	log.Printf("[VLC] URL: %s", url[:min(100, len(url))])
 
 	cmd := exec.Command(vlcBin, args...)
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 
 	if err := cmd.Start(); err != nil {
+		log.Printf("[VLC] Failed to start: %v", err)
 		return fmt.Errorf("failed to start vlc: %w", err)
 	}
 
+	log.Printf("[VLC] Process started with PID %d", cmd.Process.Pid)
+
 	go func() {
-		cmd.Wait()
+		err := cmd.Wait()
+		if err != nil {
+			log.Printf("[VLC] Process exited with error: %v", err)
+		} else {
+			log.Printf("[VLC] Process exited normally")
+		}
 	}()
 
 	return nil
@@ -1849,9 +2181,9 @@ func (a *App) AddToLibrary(anime LibraryAnime) error {
 	}
 
 	_, err := a.db.Exec(`
-		INSERT OR REPLACE INTO library (anime_id, title, image, status, score, episodes_watch, total_episodes, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
-	`, anime.AnimeID, anime.Title, anime.Image, anime.Status, anime.Score, anime.EpisodesWatch, anime.TotalEpisodes)
+		INSERT OR REPLACE INTO library (anime_id, title, image, status, score, episodes_watch, total_episodes, last_known_episodes, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+	`, anime.AnimeID, anime.Title, anime.Image, anime.Status, anime.Score, anime.EpisodesWatch, anime.TotalEpisodes, anime.LastKnownEpisodes)
 	return err
 }
 
@@ -1860,7 +2192,7 @@ func (a *App) GetLibrary() ([]LibraryAnime, error) {
 		return nil, fmt.Errorf("database not initialized")
 	}
 
-	rows, err := a.db.Query("SELECT id, anime_id, title, image, status, score, episodes_watch, total_episodes, updated_at FROM library ORDER BY updated_at DESC")
+	rows, err := a.db.Query("SELECT id, anime_id, title, image, status, score, episodes_watch, total_episodes, last_known_episodes, updated_at FROM library ORDER BY updated_at DESC")
 	if err != nil {
 		return nil, err
 	}
@@ -1869,7 +2201,7 @@ func (a *App) GetLibrary() ([]LibraryAnime, error) {
 	var library []LibraryAnime
 	for rows.Next() {
 		var item LibraryAnime
-		err := rows.Scan(&item.ID, &item.AnimeID, &item.Title, &item.Image, &item.Status, &item.Score, &item.EpisodesWatch, &item.TotalEpisodes, &item.UpdatedAt)
+		err := rows.Scan(&item.ID, &item.AnimeID, &item.Title, &item.Image, &item.Status, &item.Score, &item.EpisodesWatch, &item.TotalEpisodes, &item.LastKnownEpisodes, &item.UpdatedAt)
 		if err != nil {
 			continue
 		}
@@ -1903,8 +2235,8 @@ func (a *App) GetLibraryItem(animeID string) (*LibraryAnime, error) {
 	}
 
 	var item LibraryAnime
-	err := a.db.QueryRow("SELECT id, anime_id, title, image, status, score, episodes_watch, total_episodes, updated_at FROM library WHERE anime_id = ?", animeID).
-		Scan(&item.ID, &item.AnimeID, &item.Title, &item.Image, &item.Status, &item.Score, &item.EpisodesWatch, &item.TotalEpisodes, &item.UpdatedAt)
+	err := a.db.QueryRow("SELECT id, anime_id, title, image, status, score, episodes_watch, total_episodes, last_known_episodes, updated_at FROM library WHERE anime_id = ?", animeID).
+		Scan(&item.ID, &item.AnimeID, &item.Title, &item.Image, &item.Status, &item.Score, &item.EpisodesWatch, &item.TotalEpisodes, &item.LastKnownEpisodes, &item.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -1969,9 +2301,9 @@ func (a *App) ImportLibrary(jsonData string) (int, error) {
 	count := 0
 	for _, item := range items {
 		_, err := a.db.Exec(`
-			INSERT OR REPLACE INTO library (anime_id, title, image, status, score, episodes_watch, total_episodes, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?, ''), datetime('now')))
-		`, item.AnimeID, item.Title, item.Image, item.Status, item.Score, item.EpisodesWatch, item.TotalEpisodes, item.UpdatedAt)
+			INSERT OR REPLACE INTO library (anime_id, title, image, status, score, episodes_watch, total_episodes, last_known_episodes, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?, ''), datetime('now')))
+		`, item.AnimeID, item.Title, item.Image, item.Status, item.Score, item.EpisodesWatch, item.TotalEpisodes, item.LastKnownEpisodes, item.UpdatedAt)
 		if err == nil {
 			count++
 		}
@@ -2082,6 +2414,149 @@ func (a *App) GetDownloads() ([]string, error) {
 	return files, nil
 }
 
+func (a *App) startNotificationChecker() {
+	if a.notifStopCh != nil {
+		return
+	}
+	a.notifStopCh = make(chan struct{})
+	go a.notificationLoop()
+}
+
+func (a *App) stopNotificationChecker() {
+	if a.notifStopCh != nil {
+		close(a.notifStopCh)
+		a.notifStopCh = nil
+	}
+}
+
+func (a *App) notificationLoop() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-a.notifStopCh:
+			return
+		case <-ticker.C:
+			if a.GetSetting("notifications_enabled") != "true" {
+				continue
+			}
+			a.checkForNewEpisodes()
+		}
+	}
+}
+
+func (a *App) checkForNewEpisodes() {
+	if a.db == nil {
+		return
+	}
+
+	// Only check anime with status "watching"
+	rows, err := a.db.Query(
+		"SELECT anime_id, title, last_known_episodes FROM library WHERE status = 'watching' AND anime_id != ''",
+	)
+	if err != nil {
+		log.Printf("[Notif] Failed to query library: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	type checkItem struct {
+		AnimeID          string
+		Title            string
+		LastKnownEpisodes int
+	}
+	var items []checkItem
+	for rows.Next() {
+		var item checkItem
+		if err := rows.Scan(&item.AnimeID, &item.Title, &item.LastKnownEpisodes); err == nil {
+			items = append(items, item)
+		}
+	}
+
+	if len(items) == 0 {
+		return
+	}
+
+	log.Printf("[Notif] Checking %d library anime for new episodes...", len(items))
+
+	type checkResult struct {
+		item       checkItem
+		newEpCount int
+	}
+
+	var results []checkResult
+
+	for _, item := range items {
+		anilistID, err := strconv.Atoi(item.AnimeID)
+		if err != nil {
+			continue
+		}
+
+		var resp struct {
+			Data struct {
+				Media struct {
+					Episodes *int `json:"episodes"`
+				} `json:"Media"`
+			} `json:"data"`
+		}
+
+		err = a.anilistQuery(`query ($id: Int) { Media(id: $id) { episodes } }`, map[string]interface{}{
+			"id": anilistID,
+		}, &resp)
+		if err != nil {
+			log.Printf("[Notif] Failed to check %s: %v", item.Title, err)
+			continue
+		}
+
+		if resp.Data.Media.Episodes != nil && *resp.Data.Media.Episodes > item.LastKnownEpisodes {
+			results = append(results, checkResult{item: item, newEpCount: *resp.Data.Media.Episodes})
+		}
+
+		// Respect AniList rate limit
+		time.Sleep(300 * time.Millisecond)
+	}
+
+	if len(results) == 0 {
+		return
+	}
+
+	// Send notifications and update DB
+	for _, r := range results {
+		epDiff := r.newEpCount - r.item.LastKnownEpisodes
+		body := fmt.Sprintf("%d new episode(s) available!", epDiff)
+		if epDiff == 1 {
+			body = "1 new episode available!"
+		}
+
+		log.Printf("[Notif] Sending notification for %s: %s", r.item.Title, body)
+
+		_ = wruntime.SendNotification(a.ctx, wruntime.NotificationOptions{
+			ID:    fmt.Sprintf("animobox-%s", r.item.AnimeID),
+			Title: r.item.Title,
+			Body:  body,
+		})
+
+		// Update last_known_episodes
+		_, err := a.db.Exec("UPDATE library SET last_known_episodes = ? WHERE anime_id = ?", r.newEpCount, r.item.AnimeID)
+		if err != nil {
+			log.Printf("[Notif] Failed to update last_known_episodes for %s: %v", r.item.AnimeID, err)
+		}
+	}
+}
+
+func (a *App) GetNotificationsEnabled() string {
+	return a.GetSetting("notifications_enabled")
+}
+
+func (a *App) SetNotificationsEnabled(enabled bool) error {
+	val := "false"
+	if enabled {
+		val = "true"
+	}
+	return a.SetSetting("notifications_enabled", val)
+}
+
 func (a *App) SetSetting(key string, value string) error {
 	if a.db == nil {
 		return fmt.Errorf("database not initialized")
@@ -2103,7 +2578,7 @@ func (a *App) GetSetting(key string) string {
 }
 
 func (a *App) GetAppVersion() string {
-	return "1.0.0"
+	return "1.2.0"
 }
 
 func (a *App) GetPlatform() string {

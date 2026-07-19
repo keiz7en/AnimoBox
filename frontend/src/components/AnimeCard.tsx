@@ -15,6 +15,8 @@ export default function AnimeCard({ anime, showRank = false }: AnimeCardProps) {
   const type = 'type' in anime ? anime.type : '';
   const rank = 'rank' in anime ? anime.rank : '';
   const epsCount = 'epsCount' in anime ? anime.epsCount : '';
+  const subs = 'subs' in anime ? (anime as TrendingAnime).subs : '';
+  const dubs = 'dubs' in anime ? (anime as TrendingAnime).dubs : '';
 
   return (
     <div
@@ -54,6 +56,26 @@ export default function AnimeCard({ anime, showRank = false }: AnimeCardProps) {
           style={{ position: 'absolute', bottom: 6, left: 6, fontSize: 10 }}
         >
           {epsCount}
+        </div>
+      )}
+
+      {subs && subs !== '0' && (
+        <div style={{
+          position: 'absolute', top: 6, left: 6, fontSize: 9, fontWeight: 700,
+          background: 'rgba(0,230,118,0.85)', color: '#000', padding: '1px 5px',
+          borderRadius: 3, lineHeight: '14px',
+        }}>
+          SUB {subs}
+        </div>
+      )}
+
+      {dubs && dubs !== '0' && (
+        <div style={{
+          position: 'absolute', top: 6, right: 6, fontSize: 9, fontWeight: 700,
+          background: 'rgba(41,182,246,0.85)', color: '#000', padding: '1px 5px',
+          borderRadius: 3, lineHeight: '14px',
+        }}>
+          DUB {dubs}
         </div>
       )}
 

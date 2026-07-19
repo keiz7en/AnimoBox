@@ -62,6 +62,14 @@ export function GetMALStatus() {
   return window['go']['main']['App']['GetMALStatus']();
 }
 
+export function GetNewFinishedAiring() {
+  return window['go']['main']['App']['GetNewFinishedAiring']();
+}
+
+export function GetNotificationsEnabled() {
+  return window['go']['main']['App']['GetNotificationsEnabled']();
+}
+
 export function GetPlatform() {
   return window['go']['main']['App']['GetPlatform']();
 }
@@ -144,6 +152,10 @@ export function SaveLibraryToFile() {
 
 export function SearchAnime(arg1, arg2) {
   return window['go']['main']['App']['SearchAnime'](arg1, arg2);
+}
+
+export function SetNotificationsEnabled(arg1) {
+  return window['go']['main']['App']['SetNotificationsEnabled'](arg1);
 }
 
 export function SetSetting(arg1, arg2) {

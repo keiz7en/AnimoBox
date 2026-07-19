@@ -71,5 +71,6 @@ export interface LibraryAnime {
   score: number;
   episodesWatch: number;
   totalEpisodes: string;
+  lastKnownEpisodes: number;
   updatedAt: string;
 }

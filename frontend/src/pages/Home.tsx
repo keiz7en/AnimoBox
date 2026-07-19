@@ -1,57 +1,64 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AnimeCard from '../components/AnimeCard';
 import { TrendingAnime } from '../types';
-import { IconSearch, IconFlame, IconClock, IconTrophy, IconCalendar, IconError404 } from '@tabler/icons-react';
-import { GetTrending, GetRecentEpisodes, GetFinishedAiring, GetUpcoming } from '../../wailsjs/go/main/App';
+import { IconSearch, IconFlame, IconClock, IconTrophy, IconCalendar, IconError404, IconRefresh, IconSparkles, IconSubtask, IconMicrophone } from '@tabler/icons-react';
+import { GetTrending, GetRecentEpisodes, GetFinishedAiring, GetUpcoming, GetNewFinishedAiring } from '../../wailsjs/go/main/App';
 
-type TabKey = 'trending' | 'recent' | 'finished' | 'upcoming';
+type TabKey = 'latest' | 'trending' | 'newfinished' | 'finished' | 'upcoming';
+type SubDubFilter = 'all' | 'sub' | 'dub';
+
+const TAB_CONFIG: { key: TabKey; label: string; icon: React.FC<any> }[] = [
+  { key: 'latest', label: 'Latest Episode', icon: IconClock },
+  { key: 'trending', label: 'Trending', icon: IconFlame },
+  { key: 'newfinished', label: 'New Finished Aired', icon: IconSparkles },
+  { key: 'finished', label: 'Finished Airing', icon: IconTrophy },
+  { key: 'upcoming', label: 'Upcoming', icon: IconCalendar },
+];
 
 export default function Home() {
   const navigate = useNavigate();
   const [trending, setTrending] = useState<TrendingAnime[]>([]);
   const [recentEpisodes, setRecentEpisodes] = useState<TrendingAnime[]>([]);
   const [finishedAiring, setFinishedAiring] = useState<TrendingAnime[]>([]);
+  const [newFinishedAiring, setNewFinishedAiring] = useState<TrendingAnime[]>([]);
   const [upcoming, setUpcoming] = useState<TrendingAnime[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<TabKey>('trending');
+  const [activeTab, setActiveTab] = useState<TabKey>('latest');
+  const [subDubFilter, setSubDubFilter] = useState<SubDubFilter>('all');
   const [loadedTabs, setLoadedTabs] = useState<Set<TabKey>>(new Set());
 
-  useEffect(() => {
-    loadTab('trending');
-  }, []);
-
-  const loadTab = async (tab: TabKey) => {
-    if (loadedTabs.has(tab)) return;
+  const loadTab = useCallback(async (tab: TabKey, force?: boolean) => {
+    if (!force && loadedTabs.has(tab)) return;
     setLoading(true);
     setError(null);
     try {
-      let data: TrendingAnime[] = [];
       switch (tab) {
         case 'trending': {
           const result = await GetTrending();
-          data = (result as any) || [];
-          setTrending(data);
+          setTrending((result as any) || []);
           break;
         }
-        case 'recent': {
+        case 'latest': {
           const result = await GetRecentEpisodes();
-          data = (result as any) || [];
-          setRecentEpisodes(data);
+          setRecentEpisodes((result as any) || []);
           break;
         }
         case 'finished': {
           const result = await GetFinishedAiring();
-          data = (result as any) || [];
-          setFinishedAiring(data);
+          setFinishedAiring((result as any) || []);
+          break;
+        }
+        case 'newfinished': {
+          const result = await GetNewFinishedAiring();
+          setNewFinishedAiring((result as any) || []);
           break;
         }
         case 'upcoming': {
           const result = await GetUpcoming();
-          data = (result as any) || [];
-          setUpcoming(data);
+          setUpcoming((result as any) || []);
           break;
         }
       }
@@ -62,11 +69,40 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [loadedTabs]);
+
+  useEffect(() => {
+    loadTab('latest');
+  }, []);
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        loadTab(activeTab, true);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [activeTab, loadTab]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.altKey && e.key === 'ArrowLeft') {
+        e.preventDefault();
+        navigate(-1);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [navigate]);
 
   const handleTabChange = (tab: TabKey) => {
     setActiveTab(tab);
-    loadTab(tab);
+    loadTab(tab, true);
+  };
+
+  const handleRefresh = () => {
+    loadTab(activeTab, true);
   };
 
   const handleSearch = () => {
@@ -76,22 +112,28 @@ export default function Home() {
   };
 
   const getDataForTab = (): TrendingAnime[] => {
+    let data: TrendingAnime[];
     switch (activeTab) {
-      case 'trending': return trending;
-      case 'recent': return recentEpisodes;
-      case 'finished': return finishedAiring;
-      case 'upcoming': return upcoming;
+      case 'latest': data = recentEpisodes; break;
+      case 'trending': data = trending; break;
+      case 'finished': data = finishedAiring; break;
+      case 'newfinished': data = newFinishedAiring; break;
+      case 'upcoming': data = upcoming; break;
+      default: data = [];
     }
+
+    if (activeTab === 'latest' && subDubFilter !== 'all') {
+      data = data.filter((a) => {
+        if (subDubFilter === 'sub') return a.subs !== '0';
+        if (subDubFilter === 'dub') return a.dubs !== '0';
+        return true;
+      });
+    }
+
+    return data;
   };
 
   const tabData = getDataForTab();
-
-  const TAB_CONFIG: { key: TabKey; label: string; icon: React.FC<any> }[] = [
-    { key: 'trending', label: 'Top Anime', icon: IconFlame },
-    { key: 'recent', label: 'Currently Airing', icon: IconClock },
-    { key: 'finished', label: 'Finished Airing', icon: IconTrophy },
-    { key: 'upcoming', label: 'Upcoming', icon: IconCalendar },
-  ];
 
   return (
     <div className="page-container fade-in">
@@ -122,18 +164,44 @@ export default function Home() {
         </div>
       )}
 
-      <div className="tab-bar">
-        {TAB_CONFIG.map(({ key, label, icon: Icon }) => (
-          <button
-            key={key}
-            className={`tab ${activeTab === key ? 'active' : ''}`}
-            onClick={() => handleTabChange(key)}
-          >
-            <Icon size={14} style={{ verticalAlign: -2, marginRight: 4 }} />
-            {label}
-          </button>
-        ))}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <div className="tab-bar" style={{ flex: 1 }}>
+          {TAB_CONFIG.map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              className={`tab ${activeTab === key ? 'active' : ''}`}
+              onClick={() => handleTabChange(key)}
+            >
+              <Icon size={14} style={{ verticalAlign: -2, marginRight: 4 }} />
+              {label}
+            </button>
+          ))}
+        </div>
+        <button className="btn-icon" onClick={handleRefresh} title="Refresh" disabled={loading}
+          style={{ opacity: loading ? 0.5 : 1 }}>
+          <IconRefresh size={16} className={loading ? 'spin' : ''} />
+        </button>
       </div>
+
+      {activeTab === 'latest' && (
+        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+          {([
+            { key: 'all' as SubDubFilter, label: 'All', icon: null },
+            { key: 'sub' as SubDubFilter, label: 'Sub', icon: IconSubtask },
+            { key: 'dub' as SubDubFilter, label: 'Dub', icon: IconMicrophone },
+          ]).map(({ key, label, icon: SIcon }) => (
+            <button
+              key={key}
+              className={`btn ${subDubFilter === key ? 'btn-accent' : 'btn-outline'}`}
+              onClick={() => setSubDubFilter(key)}
+              style={{ fontSize: 12, padding: '4px 12px', gap: 4 }}
+            >
+              {SIcon && <SIcon size={12} />}
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {loading ? (
         <div style={{ padding: '60px 16px', textAlign: 'center', color: 'var(--text-muted)' }}>

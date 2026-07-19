@@ -92,6 +92,7 @@ export namespace main {
 	    score: number;
 	    episodesWatch: number;
 	    totalEpisodes: string;
+	    lastKnownEpisodes: number;
 	    updatedAt: string;
 	
 	    static createFrom(source: any = {}) {
@@ -108,6 +109,7 @@ export namespace main {
 	        this.score = source["score"];
 	        this.episodesWatch = source["episodesWatch"];
 	        this.totalEpisodes = source["totalEpisodes"];
+	        this.lastKnownEpisodes = source["lastKnownEpisodes"];
 	        this.updatedAt = source["updatedAt"];
 	    }
 	}

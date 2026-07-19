@@ -32,6 +32,10 @@ export function GetMALAuthURL():Promise<string>;
 
 export function GetMALStatus():Promise<string>;
 
+export function GetNewFinishedAiring():Promise<Array<main.TrendingAnime>>;
+
+export function GetNotificationsEnabled():Promise<string>;
+
 export function GetPlatform():Promise<string>;
 
 export function GetRecentEpisodes():Promise<Array<main.TrendingAnime>>;
@@ -73,6 +77,8 @@ export function RemoveFromLibrary(arg1:string):Promise<void>;
 export function SaveLibraryToFile():Promise<void>;
 
 export function SearchAnime(arg1:string,arg2:number):Promise<Array<main.SearchResult>>;
+
+export function SetNotificationsEnabled(arg1:boolean):Promise<void>;
 
 export function SetSetting(arg1:string,arg2:string):Promise<void>;
 
