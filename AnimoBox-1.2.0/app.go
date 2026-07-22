@@ -1246,117 +1246,50 @@ func (a *App) GetStreamURL(episodeID string, animeTitle string) ([]StreamSource,
 
 	log.Printf("[Stream] Searching for: %s ep %s (alt: %s)", title, epNumber, altTitle)
 
-	type sourceResult struct {
-		sources []StreamSource
-		err     error
-		server  string
+	// Priority 1: AnimeHeaven
+	for _, t := range titles {
+		log.Printf("[Stream] Searching AnimeHeaven for: %s ep %s", t, epNumber)
+		ahSources, err := a.getAnimeHeavenVideoAllResults(t, epNumber)
+		if err == nil && len(ahSources) > 0 {
+			log.Printf("[Stream] AnimeHeaven found %d source(s)", len(ahSources))
+			return ahSources, nil
+		}
+		log.Printf("[Stream] AnimeHeaven failed for '%s': %v", t, err)
 	}
 
-	var mu sync.Mutex
-	allSources := []StreamSource{}
-	var errs []string
-	var wg sync.WaitGroup
-
-	wg.Add(3)
-
-	go func() {
-		defer wg.Done()
-		var ahErr error
-		for _, t := range titles {
-			log.Printf("[Stream] Searching AnimeHeaven for: %s ep %s", t, epNumber)
-			ahSources, err := a.getAnimeHeavenVideoAllResults(t, epNumber)
-			if err == nil && len(ahSources) > 0 {
-				mu.Lock()
-				allSources = append(allSources, ahSources...)
-				mu.Unlock()
-				return
-			}
-			if err != nil {
-				ahErr = err
-			}
+	// Priority 2: AniKoto
+	for _, t := range titles {
+		log.Printf("[Stream] Searching AniKoto for: %s ep %s", t, epNumber)
+		animeID, searchErr := a.searchAnikoto(t)
+		if searchErr != nil {
+			log.Printf("[Stream] AniKoto search failed for '%s': %v", t, searchErr)
+			continue
 		}
-		mu.Lock()
-		if ahErr != nil {
-			errs = append(errs, fmt.Sprintf("AnimeHeaven: %v", ahErr))
-		} else {
-			errs = append(errs, "AnimeHeaven: no results")
+		akSources, err := a.getAnikotoVideoURLs(animeID, epNumber)
+		if err == nil && len(akSources) > 0 {
+			log.Printf("[Stream] AniKoto found %d source(s)", len(akSources))
+			return akSources, nil
 		}
-		mu.Unlock()
-	}()
-
-	go func() {
-		defer wg.Done()
-		var awErr error
-		for _, t := range titles {
-			log.Printf("[Stream] Searching Aniwaves.ru for: %s ep %s", t, epNumber)
-			awSources, err := a.getAniwavesVideo(t, epNumber)
-			if err == nil && len(awSources) > 0 {
-				mu.Lock()
-				allSources = append(allSources, awSources...)
-				mu.Unlock()
-				return
-			}
-			if err != nil {
-				awErr = err
-			}
-		}
-		mu.Lock()
-		if awErr != nil {
-			errs = append(errs, fmt.Sprintf("Aniwaves: %v", awErr))
-		} else {
-			errs = append(errs, "Aniwaves: no results")
-		}
-		mu.Unlock()
-	}()
-
-	go func() {
-		defer wg.Done()
-		var akErr error
-		for _, t := range titles {
-			log.Printf("[Stream] Searching AniKoto for: %s ep %s", t, epNumber)
-			animeID, searchErr := a.searchAnikoto(t)
-			if searchErr != nil {
-				akErr = searchErr
-				continue
-			}
-			akSources, err := a.getAnikotoVideoURLs(animeID, epNumber)
-			if err == nil && len(akSources) > 0 {
-				mu.Lock()
-				allSources = append(allSources, akSources...)
-				mu.Unlock()
-				return
-			}
-			if err != nil {
-				akErr = err
-			}
-		}
-		mu.Lock()
-		if akErr != nil {
-			errs = append(errs, fmt.Sprintf("AniKoto: %v", akErr))
-		} else {
-			errs = append(errs, "AniKoto: no results")
-		}
-		mu.Unlock()
-	}()
-
-	wg.Wait()
-
-	if len(allSources) == 0 {
-		errMsg := "no source found"
-		if len(errs) > 0 {
-			errMsg = strings.Join(errs, "; ")
-		}
-		log.Printf("[Stream] All sources failed: %s", errMsg)
-		allSources = append(allSources, StreamSource{
-			Server: "Unavailable",
-			Type:   "info",
-			Links:  []StreamLink{{URL: "", Quality: errMsg}},
-		})
-	} else {
-		log.Printf("[Stream] Found %d source(s)", len(allSources))
+		log.Printf("[Stream] AniKoto failed for '%s': %v", t, err)
 	}
 
-	return allSources, nil
+	// Priority 3: Aniwaves
+	for _, t := range titles {
+		log.Printf("[Stream] Searching Aniwaves for: %s ep %s", t, epNumber)
+		awSources, err := a.getAniwavesVideo(t, epNumber)
+		if err == nil && len(awSources) > 0 {
+			log.Printf("[Stream] Aniwaves found %d source(s)", len(awSources))
+			return awSources, nil
+		}
+		log.Printf("[Stream] Aniwaves failed for '%s': %v", t, err)
+	}
+
+	log.Printf("[Stream] All sources failed for: %s ep %s", title, epNumber)
+	return []StreamSource{{
+		Server: "Unavailable",
+		Type:   "info",
+		Links:  []StreamLink{{URL: "", Quality: "no source found for this episode"}},
+	}}, nil
 }
 
 func (a *App) getAlternateTitle(anilistID string) (string, error) {
