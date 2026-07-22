@@ -43,9 +43,11 @@ export default function AnimeCard({ anime, showRank = false }: AnimeCardProps) {
   const diffMs = hasCountdown ? airingAt * 1000 - now : 0;
   const isAired = diffMs <= 0;
 
+  const isNew = 'isNew' in anime && (anime as TrendingAnime).isNew;
+
   return (
     <div
-      className="anime-card"
+      className={`anime-card ${isNew ? 'anime-card-new' : ''}`}
       onClick={() => navigate(`/anime/${anime.id}`)}
     >
       <img

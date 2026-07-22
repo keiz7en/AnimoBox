@@ -884,3 +884,24 @@ input, textarea {
     transform: scale(1.05);
   }
 }
+
+/* Whole card shining for NEW episodes */
+.anime-card-new {
+  animation: cardShine 2s ease-in-out infinite;
+  box-shadow: 0 0 12px rgba(255, 107, 107, 0.4);
+}
+
+.anime-card-new .poster {
+  box-shadow: inset 0 0 20px rgba(255, 107, 107, 0.15);
+}
+
+@keyframes cardShine {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(255, 107, 107, 0.3);
+    border-color: rgba(255, 107, 107, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(255, 107, 107, 0.7), 0 0 40px rgba(255, 107, 107, 0.3);
+    border-color: rgba(255, 107, 107, 0.8);
+  }
+}
