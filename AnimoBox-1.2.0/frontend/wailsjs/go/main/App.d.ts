@@ -68,6 +68,8 @@ export function ImportLibraryFromFile():Promise<number>;
 
 export function InitPlayer(arg1:string):Promise<void>;
 
+export function LaunchVLC():Promise<void>;
+
 export function MPVStop():Promise<void>;
 
 export function MaximizeWindow():Promise<void>;

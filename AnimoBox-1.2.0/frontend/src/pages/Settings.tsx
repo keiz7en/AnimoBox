@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { IconSettings, IconExternalLink, IconRefresh, IconDownload, IconCheck, IconPlayerPlay, IconBell, IconBellOff, IconFolder } from '@tabler/icons-react';
-import { EnsureTools, GetMALStatus, GetMALAuthURL, SyncToMAL, GetDownloads, GetAppVersion, GetNotificationsEnabled, SetNotificationsEnabled, GetCustomVLCPath, BrowseVLCPath, TestNotification } from '../../wailsjs/go/main/App';
+import { IconSettings, IconExternalLink, IconRefresh, IconDownload, IconCheck, IconPlayerPlay, IconBell, IconBellOff, IconFolder, IconWorld } from '@tabler/icons-react';
+import { EnsureTools, GetMALStatus, GetMALAuthURL, SyncToMAL, GetDownloads, GetAppVersion, GetNotificationsEnabled, SetNotificationsEnabled, GetCustomVLCPath, BrowseVLCPath, TestNotification, LaunchVLC, OpenInBrowser } from '../../wailsjs/go/main/App';
 
 export default function Settings() {
   const [malStatus, setMalStatus] = useState('not_connected');
@@ -43,6 +43,14 @@ export default function Settings() {
 
   const handleTestNotification = async () => {
     try { await TestNotification(); } catch {}
+  };
+
+  const handleLaunchVLC = async () => {
+    try { await LaunchVLC(); } catch {}
+  };
+
+  const handleOpenBrowser = async () => {
+    try { await OpenInBrowser('https://www.google.com'); } catch {}
   };
 
   const handleBrowseVLC = async () => {
@@ -88,6 +96,14 @@ export default function Settings() {
           <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
             Browse and select vlc.exe on your computer. Leave empty to use bundled VLC.
           </p>
+          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            <button className="btn btn-accent" onClick={handleLaunchVLC} style={{ fontSize: 12, height: 32, gap: 6 }}>
+              <IconPlayerPlay size={14} /> Run VLC
+            </button>
+            <button className="btn btn-outline" onClick={handleOpenBrowser} style={{ fontSize: 12, height: 32, gap: 6 }}>
+              <IconWorld size={14} /> Open in Browser
+            </button>
+          </div>
         </div>
 
         <div className="settings-card">

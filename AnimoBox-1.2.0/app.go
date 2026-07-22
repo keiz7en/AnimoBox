@@ -2487,6 +2487,18 @@ func (a *App) OpenInBrowser(url string) {
 	cmd.Start()
 }
 
+func (a *App) LaunchVLC() error {
+	vlcBin := a.vlcPath()
+	if _, err := os.Stat(vlcBin); err != nil {
+		return fmt.Errorf("vlc not found at %s", vlcBin)
+	}
+	log.Printf("[VLC] Launching: %s", vlcBin)
+	cmd := exec.Command(vlcBin)
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	return cmd.Start()
+}
+
 func (a *App) stopMPV() {
 }
 

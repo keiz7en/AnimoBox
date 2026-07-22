@@ -134,6 +134,10 @@ export function InitPlayer(arg1) {
   return window['go']['main']['App']['InitPlayer'](arg1);
 }
 
+export function LaunchVLC() {
+  return window['go']['main']['App']['LaunchVLC']();
+}
+
 export function MPVStop() {
   return window['go']['main']['App']['MPVStop']();
 }
