@@ -2389,7 +2389,7 @@ func (a *App) PlayInMPV(url string) error {
 
 	if strings.Contains(strings.ToLower(url), ".m3u8") {
 		args = append(args,
-			"--http-referrer=https://aniwaves.ru/",
+			"--http-referrer=https://anikototv.to/",
 			"--http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
 		)
 	} else if strings.Contains(strings.ToLower(url), "animeheaven") {
