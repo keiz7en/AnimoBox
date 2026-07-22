@@ -1003,6 +1003,229 @@ func (a *App) GetAnimeDetails(id string) (*Anime, error) {
 	return anime, nil
 }
 
+var anikotoHTTPClient = &http.Client{Timeout: 15 * time.Second}
+
+func anikotoRequest(method, urlStr string) (*http.Response, error) {
+	req, err := http.NewRequest(method, urlStr, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "application/json, text/html, */*")
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	req.Header.Set("Referer", "https://anikototv.to/")
+	return anikotoHTTPClient.Do(req)
+}
+
+func (a *App) searchAnikoto(query string) (string, string, error) {
+	resp, err := anikotoRequest("GET", fmt.Sprintf("https://anikototv.to/ajax/anime/search?keyword=%s", url.QueryEscape(query)))
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+
+	var searchResp struct {
+		Status int `json:"status"`
+		Result struct {
+			HTML string `json:"html"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&searchResp); err != nil {
+		return "", "", err
+	}
+	if searchResp.Status != 200 || searchResp.Result.HTML == "" {
+		return "", "", fmt.Errorf("no results")
+	}
+
+	// Extract first anime link: /anime/{slug}
+	re := regexp.MustCompile(`/anime/([a-z0-9][a-z0-9-]+[a-z0-9])`)
+	m := re.FindStringSubmatch(searchResp.Result.HTML)
+	if len(m) < 2 {
+		return "", "", fmt.Errorf("no anime link found")
+	}
+	slug := m[1]
+
+	// Fetch the anime page to get the data-id
+	pageResp, err := http.Get("https://anikototv.to/anime/" + slug)
+	if err != nil {
+		return "", "", err
+	}
+	defer pageResp.Body.Close()
+	body, _ := io.ReadAll(pageResp.Body)
+	pageHTML := string(body)
+
+	// Extract data-id from page
+	idRe := regexp.MustCompile(`data-id="(\d+)"`)
+	idMatch := idRe.FindStringSubmatch(pageHTML)
+	if len(idMatch) < 2 {
+		return "", "", fmt.Errorf("data-id not found")
+	}
+
+	return idMatch[1], slug, nil
+}
+
+func (a *App) getAnikotoVideoURLs(animeID string, epNumber string) ([]StreamSource, error) {
+	// Step 1: Get episode list
+	epResp, err := anikotoRequest("GET", fmt.Sprintf("https://anikototv.to/ajax/episode/list/%s", animeID))
+	if err != nil {
+		return nil, fmt.Errorf("episode list failed: %w", err)
+	}
+	defer epResp.Body.Close()
+
+	var epListResp struct {
+		Status int `json:"status"`
+		Result struct {
+			HTML string `json:"html"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(epResp.Body).Decode(&epListResp); err != nil {
+		return nil, fmt.Errorf("episode list parse failed: %w", err)
+	}
+	if epListResp.Status != 200 || epListResp.Result.HTML == "" {
+		return nil, fmt.Errorf("episode list empty")
+	}
+
+	// Step 2: Find the episode with matching data-num
+	epHTML := epListResp.Result.HTML
+	epRe := regexp.MustCompile(`<a[^>]*data-slug="([^"]+)"[^>]*data-num="([^"]+)"[^>]*data-mal="([^"]*)"`)
+	epMatches := epRe.FindAllStringSubmatch(epHTML, -1)
+
+	var epSlug, epMAL string
+	for _, m := range epMatches {
+		num := m[2]
+		if num == epNumber || strings.TrimLeft(num, "0") == epNumber {
+			epSlug = m[1]
+			epMAL = m[3]
+			break
+		}
+	}
+	if epSlug == "" {
+		// Fallback: try episode page directly
+		epSlug = "ep-" + epNumber
+	}
+
+	// Step 3: Get server list
+	svResp, err := anikotoRequest("GET", fmt.Sprintf("https://anikototv.to/ajax/server/list?servers=%s", epSlug))
+	if err != nil {
+		return nil, fmt.Errorf("server list failed: %w", err)
+	}
+	defer svResp.Body.Close()
+
+	var svListResp struct {
+		Status int `json:"status"`
+		Result struct {
+			HTML string `json:"html"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(svResp.Body).Decode(&svListResp); err != nil {
+		return nil, fmt.Errorf("server list parse failed: %w", err)
+	}
+	if svListResp.Status != 200 || svListResp.Result.HTML == "" {
+		return nil, fmt.Errorf("server list empty")
+	}
+
+	// Step 4: Extract data-link-id values from server list
+	svHTML := svListResp.Result.HTML
+	linkRe := regexp.MustCompile(`data-link-id="([^"]+)"`)
+	linkMatches := linkRe.FindAllStringSubmatch(svHTML, -1)
+
+	nameRe := regexp.MustCompile(`<li[^>]*data-link-id="[^"]*"[^>]*>\s*([^<]+)`)
+	nameMatches := nameRe.FindAllStringSubmatch(svHTML, -1)
+
+	if len(linkMatches) == 0 {
+		return nil, fmt.Errorf("no servers found")
+	}
+
+	// Step 5: Get video URL for each server
+	var sources []StreamSource
+	var mu sync.Mutex
+
+	var wg sync.WaitGroup
+	for i, lm := range linkMatches {
+		linkID := lm[1]
+		sName := "AniKoto Server"
+		if i < len(nameMatches) {
+			sName = strings.TrimSpace(nameMatches[i][1])
+			if sName == "" {
+				sName = fmt.Sprintf("AniKoto Server %d", i+1)
+			}
+		}
+		wg.Add(1)
+		go func(lid, sn string) {
+			defer wg.Done()
+			vResp, err := anikotoRequest("GET", fmt.Sprintf("https://anikototv.to/ajax/server?get=%s", lid))
+			if err != nil {
+				return
+			}
+			defer vResp.Body.Close()
+
+			var vRespData struct {
+				Status int `json:"status"`
+				Result struct {
+					URL string `json:"url"`
+				} `json:"result"`
+			}
+			if err := json.NewDecoder(vResp.Body).Decode(&vRespData); err != nil {
+				return
+			}
+			if vRespData.Result.URL != "" {
+				mu.Lock()
+				sources = append(sources, StreamSource{
+					Server: sn,
+					Type:   "video",
+					Links:  []StreamLink{{URL: vRespData.Result.URL, Quality: "auto"}},
+				})
+				mu.Unlock()
+			}
+		}(linkID, sName)
+	}
+	wg.Wait()
+
+	// Step 6: Also try mapper API for additional sources
+	if epMAL != "" && epSlug != "" {
+	 mapperURL := fmt.Sprintf("https://mapper.nekostream.site/api/mal/%s/%s/0", epMAL, epSlug)
+		mResp, err := anikotoRequest("GET", mapperURL)
+		if err == nil {
+			defer mResp.Body.Close()
+			var mapperResp struct {
+				Gogoanime struct {
+					Sub struct {
+						URL string `json:"url"`
+					} `json:"sub"`
+					Dub struct {
+						URL string `json:"url"`
+					} `json:"dub"`
+				} `json:"gogoanime"`
+			}
+			if err := json.NewDecoder(mResp.Body).Decode(&mapperResp); err == nil {
+				if mapperResp.Gogoanime.Sub.URL != "" {
+					mu.Lock()
+					sources = append(sources, StreamSource{
+						Server: "AniKoto Vidstream Sub",
+						Type:   "video",
+						Links:  []StreamLink{{URL: mapperResp.Gogoanime.Sub.URL, Quality: "sub"}},
+					})
+					mu.Unlock()
+				}
+				if mapperResp.Gogoanime.Dub.URL != "" {
+					mu.Lock()
+					sources = append(sources, StreamSource{
+						Server: "AniKoto Vidstream Dub",
+						Type:   "video",
+						Links:  []StreamLink{{URL: mapperResp.Gogoanime.Dub.URL, Quality: "dub"}},
+					})
+					mu.Unlock()
+				}
+			}
+		}
+	}
+
+	if len(sources) == 0 {
+		return nil, fmt.Errorf("anikoto: no video URL found")
+	}
+	return sources, nil
+}
+
 func (a *App) GetStreamURL(episodeID string, animeTitle string) ([]StreamSource, error) {
 	parts := strings.SplitN(episodeID, "-", 2)
 	epNumber := ""
@@ -1054,7 +1277,7 @@ func (a *App) GetStreamURL(episodeID string, animeTitle string) ([]StreamSource,
 	var errs []string
 	var wg sync.WaitGroup
 
-	wg.Add(2)
+	wg.Add(3)
 
 	go func() {
 		defer wg.Done()
@@ -1102,6 +1325,36 @@ func (a *App) GetStreamURL(episodeID string, animeTitle string) ([]StreamSource,
 			errs = append(errs, fmt.Sprintf("Aniwaves: %v", awErr))
 		} else {
 			errs = append(errs, "Aniwaves: no results")
+		}
+		mu.Unlock()
+	}()
+
+	go func() {
+		defer wg.Done()
+		var akErr error
+		for _, t := range titles {
+			log.Printf("[Stream] Searching AniKoto for: %s ep %s", t, epNumber)
+			animeID, _, searchErr := a.searchAnikoto(t)
+			if searchErr != nil {
+				akErr = searchErr
+				continue
+			}
+			akSources, err := a.getAnikotoVideoURLs(animeID, epNumber)
+			if err == nil && len(akSources) > 0 {
+				mu.Lock()
+				allSources = append(allSources, akSources...)
+				mu.Unlock()
+				return
+			}
+			if err != nil {
+				akErr = err
+			}
+		}
+		mu.Lock()
+		if akErr != nil {
+			errs = append(errs, fmt.Sprintf("AniKoto: %v", akErr))
+		} else {
+			errs = append(errs, "AniKoto: no results")
 		}
 		mu.Unlock()
 	}()
