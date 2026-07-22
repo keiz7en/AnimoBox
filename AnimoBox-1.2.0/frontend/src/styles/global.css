@@ -1,0 +1,856 @@
+/* ============================================================
+   AnimoBox – KissAnime / KissAsian Deep Purple-Amber Theme
+   ============================================================ */
+
+/* ---------- CSS Variables (root defaults) ---------- */
+:root,
+[data-theme="purple-green"] {
+  --bg: #303030;
+  --bg-card: #424242;
+  --bg-nav: rgba(33, 33, 33, 0.98);
+  --bg-row: #141414;
+  --bg-ep: #2a2a2a;
+  --bg-ep-hover: #3a3a3a;
+  --accent: #00e676;
+  --accent2: #00c853;
+  --text: #ffffff;
+  --text-sub: #b0b0c0;
+  --text-muted: #bbbbbb;
+  --border: rgba(255, 255, 255, 0.08);
+  --ep-badge: rgba(0, 0, 0, 0.72);
+  --nav-h: 60px;
+  --radius: 4px;
+  --radius-lg: 8px;
+  --t: 0.18s ease;
+  --grid-cols-desktop: 8;
+  --grid-cols-tablet: 4;
+  --grid-cols-mobile: 3;
+}
+
+/* ---------- Deep Purple Amber (active) ---------- */
+[data-theme="deep-purple-amber"] {
+  --bg: #1a1a2e;
+  --bg-card: #2d2d3a;
+  --bg-nav: rgba(33, 33, 48, 0.95);
+  --bg-row: #1a1a2e;
+  --bg-ep: #3a3a4a;
+  --bg-ep-hover: #4a4a5e;
+  --accent: #ffc107;
+  --accent2: #ff9800;
+  --text: #ffffff;
+  --text-sub: #b0b0c0;
+  --text-muted: #bbbbbb;
+  --border: rgba(255, 255, 255, 0.08);
+  --ep-badge: rgba(0, 0, 0, 0.72);
+  --nav-h: 60px;
+  --radius: 4px;
+  --radius-lg: 8px;
+  --t: 0.18s ease;
+}
+
+/* Set active theme on <html> */
+html[data-theme="deep-purple-amber"] { color-scheme: dark; }
+
+/* ============================================================
+   GLOBAL RESET & BASE
+   ============================================================ */
+*, *::after, *::before {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ============================================================
+   SCROLLBAR
+   ============================================================ */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #666;
+}
+
+/* ============================================================
+   ROBOTO FONT (Google Fonts)
+   ============================================================ */
+@font-face {
+  font-family: 'Roboto';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/roboto/v51/KFOmCnqEu92Fr1Mu4mxP.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'Roboto';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/roboto/v51/KFOlCnqEu92Fr1MmEU9fBBc4.woff2) format('woff2');
+}
+
+/* ============================================================
+   LAYOUT HELPERS
+   ============================================================ */
+
+/* --- Page Container --- */
+.page-container {
+  padding: 16px;
+  height: 100vh;
+  overflow-y: auto;
+  background: var(--bg);
+}
+
+/* --- Row Header (section title like KissAnime) --- */
+.row-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px 6px;
+  font-size: .95rem;
+  font-weight: 700;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: .4px;
+}
+
+@media (min-width: 1024px) {
+  .row-header {
+    font-size: 24px !important;
+    padding: 0 0 10px;
+  }
+}
+
+/* --- Responsive Grid (same CSS-var driven as KissAnime) --- */
+.anime-grid {
+  display: grid;
+  gap: 10px;
+  padding: 0 16px 20px;
+  grid-template-columns: repeat(var(--grid-cols-mobile), 1fr);
+}
+
+@media (min-width: 640px) {
+  .anime-grid {
+    grid-template-columns: repeat(var(--grid-cols-tablet), 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .anime-grid {
+    grid-template-columns: repeat(var(--grid-cols-desktop), 1fr);
+  }
+}
+
+/* ============================================================
+   CARD (Anime Card)
+   ============================================================ */
+.anime-card {
+  position: relative;
+  background: var(--bg-card);
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform var(--t), box-shadow var(--t);
+  border-radius: var(--radius);
+}
+
+.anime-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+}
+
+.anime-card .poster {
+  width: 100%;
+  aspect-ratio: 2/3;
+  object-fit: cover;
+  display: block;
+}
+
+.anime-card .badge-top {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  background: var(--ep-badge);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: var(--radius);
+  pointer-events: none;
+}
+
+.anime-card .badge-rank {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: var(--accent);
+  color: #000;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: var(--radius);
+  pointer-events: none;
+}
+
+.anime-card .card-info {
+  padding: 8px 10px;
+}
+
+.anime-card .card-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.anime-card .card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.anime-card .card-meta .score {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* ============================================================
+   EPISODE BUTTONS
+   ============================================================ */
+.ep-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 16px 16px;
+}
+
+.ep-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  height: 34px;
+  padding: 0 12px;
+  background: var(--bg-ep);
+  color: var(--text);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background var(--t), border-color var(--t), color var(--t);
+  user-select: none;
+}
+
+.ep-btn:hover {
+  background: var(--bg-ep-hover);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ep-btn.active,
+.ep-btn.active:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+}
+
+.ep-btn .ep-sub,
+.ep-btn .ep-dub {
+  font-size: 9px;
+  font-weight: 700;
+  margin-left: 4px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  text-transform: uppercase;
+}
+
+.ep-btn .ep-sub {
+  background: var(--accent);
+  color: #000;
+}
+
+.ep-btn .ep-dub {
+  background: var(--accent2);
+  color: #000;
+}
+
+/* ============================================================
+   GENRE CHIPS
+   ============================================================ */
+.genre-chip {
+  display: inline-block;
+  padding: 4px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-sub);
+  background: var(--bg-ep);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all var(--t);
+}
+
+.genre-chip:hover,
+.genre-chip.active {
+  background: var(--accent);
+  color: #000;
+  border-color: var(--accent);
+}
+
+/* ============================================================
+   BUTTONS
+   ============================================================ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background var(--t), color var(--t);
+  user-select: none;
+}
+
+.btn-accent {
+  background: var(--accent);
+  color: #000;
+}
+
+.btn-accent:hover {
+  background: var(--accent2);
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.btn-outline:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn-icon {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-ep);
+  color: var(--text-sub);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all var(--t);
+}
+
+.btn-icon:hover {
+  background: var(--accent);
+  color: #000;
+  border-color: var(--accent);
+}
+
+/* ============================================================
+   INPUT / SEARCH
+   ============================================================ */
+.input {
+  height: 38px;
+  padding: 0 12px;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  outline: none;
+  transition: border-color var(--t);
+  font-family: inherit;
+}
+
+.input::placeholder {
+  color: var(--text-muted);
+}
+
+.input:focus {
+  border-color: var(--accent);
+}
+
+/* ============================================================
+   BADGE
+   ============================================================ */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: var(--radius);
+  text-transform: uppercase;
+  line-height: 1.5;
+}
+
+.badge-accent {
+  background: var(--accent);
+  color: #000;
+}
+
+.badge-sub {
+  background: var(--accent2);
+  color: #000;
+}
+
+.badge-muted {
+  background: var(--bg-ep);
+  color: var(--text-muted);
+}
+
+/* ============================================================
+   DETAIL PAGE
+   ============================================================ */
+.detail-header {
+  display: flex;
+  gap: 20px;
+  padding: 16px;
+}
+
+@media (max-width: 768px) {
+  .detail-header {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+}
+
+.detail-poster {
+  width: 200px;
+  flex-shrink: 0;
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+}
+
+.detail-poster img {
+  width: 100%;
+  display: block;
+}
+
+.detail-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.detail-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 8px;
+  line-height: 1.2;
+}
+
+@media (min-width: 1024px) {
+  .detail-title {
+    font-size: 28px;
+  }
+}
+
+.detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.detail-synopsis {
+  font-size: 13px;
+  color: var(--text-sub);
+  line-height: 1.65;
+  max-height: 160px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.detail-genres {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0;
+}
+
+.detail-info-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.detail-info-item {
+  min-width: 120px;
+}
+
+.detail-info-item .label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  margin-bottom: 2px;
+}
+
+.detail-info-item .value {
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* ============================================================
+   LIBRARY
+   ============================================================ */
+.library-item {
+  display: flex;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  border-radius: var(--radius);
+  transition: border-color var(--t);
+}
+
+.library-item:hover {
+  border-color: var(--accent);
+}
+
+.library-item .thumb {
+  width: 80px;
+  flex-shrink: 0;
+  object-fit: cover;
+}
+
+.library-item .info {
+  flex: 1;
+  padding: 10px 12px;
+  min-width: 0;
+}
+
+.library-item .title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+}
+
+.library-item .status-pill {
+  display: inline-block;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  border-radius: 2px;
+  margin-right: 4px;
+}
+
+/* ============================================================
+   SETTINGS
+   ============================================================ */
+.settings-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.settings-card h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+
+/* ============================================================
+   TABS
+   ============================================================ */
+.tab-bar {
+  display: flex;
+  gap: 4px;
+  padding: 0 16px 14px;
+  overflow-x: auto;
+}
+
+.tab-bar .tab {
+  flex-shrink: 0;
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-ep);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all var(--t);
+  white-space: nowrap;
+}
+
+.tab-bar .tab:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.tab-bar .tab.active {
+  background: var(--accent);
+  color: #000;
+  border-color: var(--accent);
+}
+
+/* ============================================================
+   PLAYER CONTROLS (bottom overlay)
+   ============================================================ */
+.player-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.92));
+  padding: 50px 16px 14px;
+  z-index: 10;
+  transition: opacity 0.3s ease;
+}
+
+.player-overlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.player-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.player-seek-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.player-seek-row .time {
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 42px;
+  font-variant-numeric: tabular-nums;
+}
+
+.player-seek-row input[type="range"] {
+  flex: 1;
+  height: 4px;
+  appearance: none;
+  background: var(--bg-ep);
+  border-radius: 2px;
+  outline: none;
+}
+
+.player-seek-row input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  background: var(--accent);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.player-btn-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.player-btn-row .group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ============================================================
+   ANIMATIONS
+   ============================================================ */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.fade-in {
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(12px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.slide-up {
+  animation: slideUp 0.22s ease;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+/* ============================================================
+   TOOLTIP (simple)
+   ============================================================ */
+[data-tooltip] {
+  position: relative;
+}
+
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  background: #222;
+  white-space: nowrap;
+  border-radius: var(--radius);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--t);
+  z-index: 100;
+}
+
+[data-tooltip]:hover::after {
+  opacity: 1;
+}
+
+/* Disable text selection and blue highlight */
+* {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+input, textarea {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+}
+
+.btn, .btn-outline, .btn-accent, .btn-icon, .ep-btn, .tab, select {
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+}
+
+.btn:focus, .btn-outline:focus, .btn-accent:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+/* ============================================================
+   COUNTDOWN TIMER
+   ============================================================ */
+.countdown-timer {
+  background: var(--bg-card);
+  border: 1px solid var(--accent);
+  border-left: 3px solid var(--accent);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 8px 12px;
+  margin-bottom: 6px;
+  border-radius: var(--radius);
+  font-variant-numeric: tabular-nums;
+}
+
+.countdown-timer.aired {
+  border-color: var(--accent2);
+  color: var(--accent2);
+}
+
+/* ============================================================
+   CARD COUNTDOWN (between poster and title)
+   ============================================================ */
+.card-countdown {
+  background: var(--bg-card);
+  border-top: 1px solid var(--accent);
+  padding: 4px 8px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.card-countdown-ep {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.card-countdown-time {
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  animation: countdownPulse 2s ease-in-out infinite;
+}
+
+.card-countdown.aired {
+  border-color: var(--accent2);
+  background: var(--bg-card);
+}
+
+.card-countdown.aired .card-countdown-ep {
+  color: var(--accent2);
+}
+
+@keyframes countdownPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}

@@ -1,0 +1,119 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Build Windows
+        run: wails build -platform windows/amd64 -o animobox.exe
+
+      - name: Create zip
+        run: |
+          $VER = if ($env:GITHUB_REF_NAME -match '^v?(.+)') { $Matches[1] } else { '1.1.1' }
+          if ($VER -notmatch '^\d') { $VER = '1.1.1' }
+          $ZIP = "animobox_${VER}_windows_amd64.zip"
+          Compress-Archive -Path "build\bin\animobox.exe", "tools\vlc-3.0.21" -DestinationPath $ZIP
+          echo "ZIP_FILE=$ZIP" >> $env:GITHUB_ENV
+
+      - name: Upload to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ZIP_FILE }}
+
+      - name: Upload artifact
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        uses: actions/upload-artifact@v4
+        with:
+          name: animobox-windows
+          path: ${{ env.ZIP_FILE }}
+
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Linux deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev gcc
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Build Linux
+        run: wails build -platform linux/amd64 -o animobox
+
+      - name: Create deb and zip
+        run: |
+          VERSION="${GITHUB_REF_NAME:-1.1.1}"
+          VERSION="${VERSION#v}"
+          if [[ ! "$VERSION" =~ ^[0-9] ]]; then VERSION="1.1.1"; fi
+          PKG="animobox_${VERSION}_linux_amd64"
+          mkdir -p "${PKG}/DEBIAN"
+          mkdir -p "${PKG}/usr/bin"
+          mkdir -p "${PKG}/usr/share/applications"
+          printf 'Package: animobox\nVersion: %s\nSection: multimedia\nPriority: optional\nArchitecture: amd64\nDepends: libgtk-3-0, libwebkit2gtk-4.0-0, vlc\nMaintainer: keiz7en\nDescription: AnimoBox - Desktop Anime Streaming App\n A desktop anime streaming application with VLC player support.\n' "$VERSION" > "${PKG}/DEBIAN/control"
+          cp build/bin/animobox "${PKG}/usr/bin/animobox"
+          chmod +x "${PKG}/usr/bin/animobox"
+          printf '[Desktop Entry]\nName=AnimoBox\nExec=/usr/bin/animobox\nIcon=animobox\nType=Application\nCategories=AudioVideo;Video;\n' > "${PKG}/usr/share/applications/animobox.desktop"
+          dpkg-deb --build "${PKG}"
+          ZIP="${PKG}.zip"
+          zip -r "$ZIP" build/bin/animobox
+          echo "DEB_FILE=${PKG}.deb" >> $GITHUB_ENV
+          echo "ZIP_FILE=$ZIP" >> $GITHUB_ENV
+
+      - name: Upload deb to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.DEB_FILE }}
+
+      - name: Upload zip to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ZIP_FILE }}
+
+      - name: Upload artifacts
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        uses: actions/upload-artifact@v4
+        with:
+          name: animobox-linux
+          path: |
+            ${{ env.DEB_FILE }}
+            ${{ env.ZIP_FILE }}
