@@ -137,9 +137,17 @@ type HistoryItem struct {
 const anilistURL = "https://graphql.anilist.co"
 
 var (
-	anilistHTTPClient = &http.Client{Timeout: 15 * time.Second}
-	anilistMu         sync.Mutex
-	anilistLastReq    time.Time
+	anilistHTTPClient = &http.Client{
+		Timeout: 15 * time.Second,
+		Transport: &http.Transport{
+			MaxIdleConns:        10,
+			MaxIdleConnsPerHost: 5,
+			IdleConnTimeout:     30 * time.Second,
+			TLSHandshakeTimeout: 5 * time.Second,
+		},
+	}
+	anilistMu      sync.Mutex
+	anilistLastReq time.Time
 )
 
 const anilistRateLimit = 300 * time.Millisecond
@@ -205,6 +213,15 @@ func (a *App) initDB() {
 	if err != nil {
 		log.Printf("Failed to create tables: %v", err)
 	}
+
+	// Add indexes for faster queries
+	a.db.Exec("CREATE INDEX IF NOT EXISTS idx_history_watched_at ON history(watched_at DESC)")
+	a.db.Exec("CREATE INDEX IF NOT EXISTS idx_history_anime_id ON history(anime_id)")
+	a.db.Exec("CREATE INDEX IF NOT EXISTS idx_library_status ON library(status)")
+	a.db.Exec("CREATE INDEX IF NOT EXISTS idx_library_updated_at ON library(updated_at DESC)")
+
+	// Trim old history on startup
+	a.db.Exec("DELETE FROM history WHERE id NOT IN (SELECT id FROM history ORDER BY watched_at DESC LIMIT 500)")
 
 	// Migration: add last_known_episodes column to existing databases
 	a.db.Exec("ALTER TABLE library ADD COLUMN last_known_episodes INTEGER DEFAULT 0")
@@ -1004,7 +1021,15 @@ func (a *App) GetAnimeDetails(id string) (*Anime, error) {
 	return anime, nil
 }
 
-var anikotoHTTPClient = &http.Client{Timeout: 15 * time.Second}
+var anikotoHTTPClient = &http.Client{
+	Timeout: 15 * time.Second,
+	Transport: &http.Transport{
+		MaxIdleConns:        10,
+		MaxIdleConnsPerHost: 5,
+		IdleConnTimeout:     30 * time.Second,
+		TLSHandshakeTimeout: 5 * time.Second,
+	},
+}
 
 func anikotoRequest(method, urlStr string) (*http.Response, error) {
 	req, err := http.NewRequest(method, urlStr, nil)
@@ -1589,7 +1614,15 @@ func (a *App) getAnimeHeavenVideo(animeID string, epNumber string) (string, erro
 	return "", fmt.Errorf("no video URL found in gate response")
 }
 
-var aniwavesHTTPClient = &http.Client{Timeout: 15 * time.Second}
+var aniwavesHTTPClient = &http.Client{
+	Timeout: 15 * time.Second,
+	Transport: &http.Transport{
+		MaxIdleConns:        10,
+		MaxIdleConnsPerHost: 5,
+		IdleConnTimeout:     30 * time.Second,
+		TLSHandshakeTimeout: 5 * time.Second,
+	},
+}
 
 func aniwavesRequest(method, urlStr string, body io.Reader) (*http.Response, error) {
 	req, err := http.NewRequest(method, urlStr, body)
@@ -2603,14 +2636,19 @@ func (a *App) AddToHistory(animeID string, title string, image string, episodeNu
 		INSERT INTO history (anime_id, title, image, episode_number, watched_at)
 		VALUES (?, ?, ?, ?, datetime('now'))
 	`, animeID, title, image, episodeNumber)
-	return err
+	if err != nil {
+		return err
+	}
+	// Keep only last 500 history entries
+	a.db.Exec("DELETE FROM history WHERE id NOT IN (SELECT id FROM history ORDER BY watched_at DESC LIMIT 500)")
+	return nil
 }
 
 func (a *App) GetHistory() ([]HistoryItem, error) {
 	if a.db == nil {
 		return nil, fmt.Errorf("database not initialized")
 	}
-	rows, err := a.db.Query("SELECT id, anime_id, title, image, episode_number, watched_at FROM history ORDER BY watched_at DESC")
+	rows, err := a.db.Query("SELECT id, anime_id, title, image, episode_number, watched_at FROM history ORDER BY watched_at DESC LIMIT 200")
 	if err != nil {
 		return nil, err
 	}
