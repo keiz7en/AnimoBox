@@ -1246,18 +1246,31 @@ func (a *App) GetStreamURL(episodeID string, animeTitle string) ([]StreamSource,
 
 	log.Printf("[Stream] Searching for: %s ep %s (alt: %s)", title, epNumber, altTitle)
 
-	// Priority 1: AnimeHeaven
+	var allSources []StreamSource
+
+	// AnimeHeaven
+	ahFound := false
 	for _, t := range titles {
 		log.Printf("[Stream] Searching AnimeHeaven for: %s ep %s", t, epNumber)
 		ahSources, err := a.getAnimeHeavenVideoAllResults(t, epNumber)
 		if err == nil && len(ahSources) > 0 {
 			log.Printf("[Stream] AnimeHeaven found %d source(s)", len(ahSources))
-			return ahSources, nil
+			allSources = append(allSources, ahSources...)
+			ahFound = true
+			break
 		}
 		log.Printf("[Stream] AnimeHeaven failed for '%s': %v", t, err)
 	}
+	if !ahFound {
+		allSources = append(allSources, StreamSource{
+			Server: "AnimeHeaven",
+			Type:   "info",
+			Links:  []StreamLink{{URL: "", Quality: "not available"}},
+		})
+	}
 
-	// Priority 2: AniKoto
+	// AniKoto
+	akFound := false
 	for _, t := range titles {
 		log.Printf("[Stream] Searching AniKoto for: %s ep %s", t, epNumber)
 		animeID, searchErr := a.searchAnikoto(t)
@@ -1268,28 +1281,43 @@ func (a *App) GetStreamURL(episodeID string, animeTitle string) ([]StreamSource,
 		akSources, err := a.getAnikotoVideoURLs(animeID, epNumber)
 		if err == nil && len(akSources) > 0 {
 			log.Printf("[Stream] AniKoto found %d source(s)", len(akSources))
-			return akSources, nil
+			allSources = append(allSources, akSources...)
+			akFound = true
+			break
 		}
 		log.Printf("[Stream] AniKoto failed for '%s': %v", t, err)
 	}
+	if !akFound {
+		allSources = append(allSources, StreamSource{
+			Server: "AniKoto",
+			Type:   "info",
+			Links:  []StreamLink{{URL: "", Quality: "not available"}},
+		})
+	}
 
-	// Priority 3: Aniwaves
+	// Aniwaves
+	awFound := false
 	for _, t := range titles {
 		log.Printf("[Stream] Searching Aniwaves for: %s ep %s", t, epNumber)
 		awSources, err := a.getAniwavesVideo(t, epNumber)
 		if err == nil && len(awSources) > 0 {
 			log.Printf("[Stream] Aniwaves found %d source(s)", len(awSources))
-			return awSources, nil
+			allSources = append(allSources, awSources...)
+			awFound = true
+			break
 		}
 		log.Printf("[Stream] Aniwaves failed for '%s': %v", t, err)
 	}
+	if !awFound {
+		allSources = append(allSources, StreamSource{
+			Server: "Aniwaves",
+			Type:   "info",
+			Links:  []StreamLink{{URL: "", Quality: "not available"}},
+		})
+	}
 
-	log.Printf("[Stream] All sources failed for: %s ep %s", title, epNumber)
-	return []StreamSource{{
-		Server: "Unavailable",
-		Type:   "info",
-		Links:  []StreamLink{{URL: "", Quality: "no source found for this episode"}},
-	}}, nil
+	log.Printf("[Stream] Total sources: %d", len(allSources))
+	return allSources, nil
 }
 
 func (a *App) getAlternateTitle(anilistID string) (string, error) {

@@ -35,9 +35,12 @@ export default function Watch() {
       const sources = await GetStreamURL(epId, state.animeTitle || '');
       setStreamSources((sources as any) || []);
       if (sources && sources.length > 0) {
-        setCurrentSource(sources[0]);
-        if (sources[0].links && sources[0].links.length > 0) {
-          setCurrentUrl(sources[0].links[0].url);
+        const firstAvailable = sources.find((s: StreamSource) => s.links && s.links.length > 0 && s.links[0].url !== '');
+        if (firstAvailable) {
+          setCurrentSource(firstAvailable);
+          setCurrentUrl(firstAvailable.links[0].url);
+        } else {
+          setCurrentSource(sources[0]);
         }
       }
     } catch (e) {
@@ -164,19 +167,23 @@ export default function Watch() {
             SERVERS ({streamSources.length})
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
-            {streamSources.map((source, i) => (
-              <button
-                key={i}
-                className={`btn ${currentSource === source ? 'btn-accent' : 'btn-outline'}`}
-                onClick={() => handleSourceSelect(source)}
-                style={{ justifyContent: 'flex-start', textTransform: 'none', fontSize: 12, gap: 6 }}
-              >
-                <IconPlayerPlay size={14} />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {source.server} {source.links[0]?.quality ? `(${source.links[0].quality})` : ''}
-                </span>
-              </button>
-            ))}
+            {streamSources.map((source, i) => {
+              const isAvailable = source.links && source.links.length > 0 && source.links[0].url !== '';
+              return (
+                <button
+                  key={i}
+                  className={`btn ${currentSource === source ? 'btn-accent' : 'btn-outline'}`}
+                  onClick={() => isAvailable && handleSourceSelect(source)}
+                  disabled={!isAvailable}
+                  style={{ justifyContent: 'flex-start', textTransform: 'none', fontSize: 12, gap: 6, opacity: isAvailable ? 1 : 0.4 }}
+                >
+                  <IconPlayerPlay size={14} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {source.server} {isAvailable && source.links[0]?.quality ? `(${source.links[0].quality})` : !isAvailable ? '(not available)' : ''}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
