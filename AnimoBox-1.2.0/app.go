@@ -262,7 +262,7 @@ func (a *App) anilistQuery(query string, variables map[string]interface{}, resul
 const trendingQuery = `
 query ($page: Int, $perPage: Int) {
   Page(page: $page, perPage: $perPage) {
-    media(type: ANIME, sort: POPULARITY_DESC) {
+    media(type: ANIME, sort: POPULARITY_DESC, isAdult: false) {
       id
       title { romaji english }
       coverImage { large color }
@@ -270,7 +270,7 @@ query ($page: Int, $perPage: Int) {
       format
       episodes
       status
-      genres
+      nextAiringEpisode { airingAt episode }
     }
   }
 }`
@@ -282,7 +282,7 @@ query ($search: String, $page: Int, $perPage: Int) {
       total
       lastPage
     }
-    media(search: $search, type: ANIME) {
+    media(search: $search, type: ANIME, isAdult: false) {
       id
       title { romaji english }
       coverImage { large color }
@@ -301,7 +301,7 @@ query ($genre: String, $page: Int, $perPage: Int) {
       total
       lastPage
     }
-    media(genre: $genre, type: ANIME, sort: POPULARITY_DESC) {
+    media(genre: $genre, type: ANIME, sort: POPULARITY_DESC, isAdult: false) {
       id
       title { romaji english }
       coverImage { large color }
@@ -348,7 +348,7 @@ query ($id: Int) {
 const seasonQuery = `
 query ($season: MediaSeason, $seasonYear: Int, $page: Int, $perPage: Int) {
   Page(page: $page, perPage: $perPage) {
-    media(type: ANIME, season: $season, seasonYear: $seasonYear, sort: POPULARITY_DESC, status_in: [RELEASING, NOT_YET_RELEASED]) {
+    media(type: ANIME, season: $season, seasonYear: $seasonYear, sort: POPULARITY_DESC, status_in: [RELEASING, NOT_YET_RELEASED], isAdult: false) {
       id
       title { romaji english }
       coverImage { large color }
@@ -365,7 +365,7 @@ query ($season: MediaSeason, $seasonYear: Int, $page: Int, $perPage: Int) {
 const finishedQuery = `
 query ($page: Int, $perPage: Int) {
   Page(page: $page, perPage: $perPage) {
-    media(type: ANIME, status: FINISHED, sort: UPDATED_AT_DESC) {
+    media(type: ANIME, status: FINISHED, sort: UPDATED_AT_DESC, isAdult: false) {
       id
       title { romaji english }
       coverImage { large color }
@@ -381,7 +381,7 @@ query ($page: Int, $perPage: Int) {
 const upcomingQuery = `
 query ($page: Int, $perPage: Int) {
   Page(page: $page, perPage: $perPage) {
-    media(type: ANIME, status: NOT_YET_RELEASED, sort: POPULARITY_DESC) {
+    media(type: ANIME, status: NOT_YET_RELEASED, sort: POPULARITY_DESC, isAdult: false) {
       id
       title { romaji english }
       coverImage { large color }
@@ -398,7 +398,7 @@ query ($page: Int, $perPage: Int) {
 const newFinishedQuery = `
 query ($page: Int, $perPage: Int) {
   Page(page: $page, perPage: $perPage) {
-    media(type: ANIME, status: FINISHED, sort: END_DATE_DESC, onList: false) {
+    media(type: ANIME, status: FINISHED, sort: END_DATE_DESC, onList: false, isAdult: false) {
       id
       title { romaji english }
       coverImage { large color }
@@ -497,7 +497,7 @@ func (a *App) GetTrending() ([]TrendingAnime, error) {
 
 var allGenres = []string{
 	"Action", "Adventure", "Boys Love", "Cars", "Comedy", "Dementia",
-	"Demons", "Drama", "Ecchi", "Erotica", "Fantasy", "Game",
+	"Demons", "Drama", "Fantasy", "Game",
 	"Girls Love", "Gourmet", "Harem", "Historical", "Horror", "Isekai",
 	"Josei", "Kids", "Magic", "Mahou Shoujo", "Martial Arts", "Mecha",
 	"Military", "Music", "Mystery", "Parody", "Police", "Psychological",
@@ -609,7 +609,7 @@ func (a *App) SearchAnime(query string, page int) ([]SearchResult, error) {
 const topAnimeQuery = `
 query ($sort: [MediaSort], $page: Int, $perPage: Int) {
   Page(page: $page, perPage: $perPage) {
-    media(type: ANIME, sort: $sort, status_in: [RELEASING, FINISHED]) {
+    media(type: ANIME, sort: $sort, status_in: [RELEASING, FINISHED], isAdult: false) {
       id
       title { romaji english }
       coverImage { large color }
@@ -705,7 +705,7 @@ func (a *App) GetTopAnime(period string) ([]SearchResult, error) {
 const scheduleQuery = `
 query ($page: Int, $perPage: Int) {
   Page(page: $page, perPage: $perPage) {
-    media(type: ANIME, status: RELEASING, sort: POPULARITY_DESC) {
+    media(type: ANIME, status: RELEASING, sort: POPULARITY_DESC, isAdult: false) {
       id
       title { romaji english }
       coverImage { large color }

@@ -20,7 +20,7 @@ const QUICK_SEARCHES = [
 
 const ALL_GENRES = [
   "Action","Adventure","Boys Love","Cars","Comedy","Dementia","Demons","Drama",
-  "Ecchi","Erotica","Fantasy","Game","Girls Love","Gourmet","Harem","Historical",
+  "Fantasy","Game","Girls Love","Gourmet","Harem","Historical",
   "Horror","Isekai","Josei","Kids","Magic","Mahou Shoujo","Martial Arts","Mecha",
   "Military","Music","Mystery","Parody","Police","Psychological","Romance","Samurai",
   "School","Sci-Fi","Seinen","Shoujo","Shoujo Ai","Shounen","Shounen Ai",
