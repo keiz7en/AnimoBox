@@ -87,6 +87,7 @@ type TrendingAnime struct {
 	AiringAt  int64  `json:"airingAt"`
 	NextEp    int    `json:"nextEp"`
 	Status    string `json:"status"`
+	IsNew     bool   `json:"isNew"`
 }
 
 type StreamLink struct {
@@ -2006,6 +2007,14 @@ func (a *App) GetRecentEpisodes() ([]TrendingAnime, error) {
 			rank = strconv.Itoa(i + 1)
 		}
 
+		isNew := false
+		if airingAt > 0 {
+			secondsUntilNext := airingAt - time.Now().Unix()
+			if secondsUntilNext > 5*86400 && secondsUntilNext < 7*86400 {
+				isNew = true
+			}
+		}
+
 		results = append(results, TrendingAnime{
 			ID:       strconv.Itoa(item.ID),
 			Title:    title,
@@ -2017,6 +2026,7 @@ func (a *App) GetRecentEpisodes() ([]TrendingAnime, error) {
 			AiringAt: airingAt,
 			NextEp:   nextEp,
 			Status:   status,
+			IsNew:    isNew,
 		})
 	}
 

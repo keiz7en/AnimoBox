@@ -228,6 +228,7 @@ export namespace main {
 	    airingAt: number;
 	    nextEp: number;
 	    status: string;
+	    isNew: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new TrendingAnime(source);
@@ -247,6 +248,7 @@ export namespace main {
 	        this.airingAt = source["airingAt"];
 	        this.nextEp = source["nextEp"];
 	        this.status = source["status"];
+	        this.isNew = source["isNew"];
 	    }
 	}
 

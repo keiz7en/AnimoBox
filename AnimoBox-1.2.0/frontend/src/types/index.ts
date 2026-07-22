@@ -53,6 +53,7 @@ export interface TrendingAnime {
   airingAt?: number;
   nextEp?: number;
   status?: string;
+  isNew?: boolean;
 }
 
 export interface StreamLink {

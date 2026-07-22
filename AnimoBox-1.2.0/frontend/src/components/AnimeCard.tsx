@@ -66,6 +66,10 @@ export default function AnimeCard({ anime, showRank = false }: AnimeCardProps) {
         <div className="badge-top">{score}</div>
       )}
 
+      {'isNew' in anime && (anime as TrendingAnime).isNew && (
+        <div className="badge-new">NEW</div>
+      )}
+
       {type && (
         <div
           className="badge-sub"
