@@ -1165,10 +1165,22 @@ func (a *App) resolveAnikotoURL(encURL string) (string, error) {
 	wrapperURL := vRespData.Result.URL
 	log.Printf("[AniKoto] Wrapper URL: %s", wrapperURL[:min(80, len(wrapperURL))])
 
-	// Step B: Decode base64 after # in the wrapper URL
-	// Format: https://example.com/player/plyr.php#base64data
-	if idx := strings.LastIndex(wrapperURL, "#"); idx >= 0 {
-		b64Part := wrapperURL[idx+1:]
+	// Step B: Decode base64 between the two # markers
+	// Format: https://example.com/player/plyr.php#base64data#
+	if idx1 := strings.Index(wrapperURL, "#"); idx1 >= 0 {
+		if idx2 := strings.Index(wrapperURL[idx1+1:], "#"); idx2 >= 0 {
+			b64Part := wrapperURL[idx1+1 : idx1+1+idx2]
+			if decoded, err := base64.StdEncoding.DecodeString(b64Part); err == nil {
+				streamURL := string(decoded)
+				if strings.Contains(streamURL, "http") {
+					log.Printf("[AniKoto] Decoded stream: %s", streamURL[:min(80, len(streamURL))])
+					return streamURL, nil
+				}
+			}
+		}
+		// Fallback: try everything after first #
+		b64Part := wrapperURL[idx1+1:]
+		b64Part = strings.TrimRight(b64Part, "#")
 		if decoded, err := base64.StdEncoding.DecodeString(b64Part); err == nil {
 			streamURL := string(decoded)
 			if strings.Contains(streamURL, "http") {
