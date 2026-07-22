@@ -1017,55 +1017,27 @@ func anikotoRequest(method, urlStr string) (*http.Response, error) {
 	return anikotoHTTPClient.Do(req)
 }
 
-func (a *App) searchAnikoto(query string) (string, string, error) {
-	resp, err := anikotoRequest("GET", fmt.Sprintf("https://anikototv.to/ajax/anime/search?keyword=%s", url.QueryEscape(query)))
+func (a *App) searchAnikoto(query string) (string, error) {
+	// Scrape the filter page for search results
+	resp, err := http.Get(fmt.Sprintf("https://anikototv.to/filter?keyword=%s", url.QueryEscape(query)))
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	html := string(body)
 
-	var searchResp struct {
-		Status int `json:"status"`
-		Result struct {
-			HTML string `json:"html"`
-		} `json:"result"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&searchResp); err != nil {
-		return "", "", err
-	}
-	if searchResp.Status != 200 || searchResp.Result.HTML == "" {
-		return "", "", fmt.Errorf("no results")
-	}
-
-	// Extract first anime link: /anime/{slug}
-	re := regexp.MustCompile(`/anime/([a-z0-9][a-z0-9-]+[a-z0-9])`)
-	m := re.FindStringSubmatch(searchResp.Result.HTML)
+	// Extract first data-tip (numeric anime ID) from poster divs
+	re := regexp.MustCompile(`data-tip="(\d+)"`)
+	m := re.FindStringSubmatch(html)
 	if len(m) < 2 {
-		return "", "", fmt.Errorf("no anime link found")
+		return "", fmt.Errorf("no anime found")
 	}
-	slug := m[1]
-
-	// Fetch the anime page to get the data-id
-	pageResp, err := http.Get("https://anikototv.to/anime/" + slug)
-	if err != nil {
-		return "", "", err
-	}
-	defer pageResp.Body.Close()
-	body, _ := io.ReadAll(pageResp.Body)
-	pageHTML := string(body)
-
-	// Extract data-id from page
-	idRe := regexp.MustCompile(`data-id="(\d+)"`)
-	idMatch := idRe.FindStringSubmatch(pageHTML)
-	if len(idMatch) < 2 {
-		return "", "", fmt.Errorf("data-id not found")
-	}
-
-	return idMatch[1], slug, nil
+	return m[1], nil
 }
 
 func (a *App) getAnikotoVideoURLs(animeID string, epNumber string) ([]StreamSource, error) {
-	// Step 1: Get episode list
+	// Step 1: Get episode list using numeric ID
 	epResp, err := anikotoRequest("GET", fmt.Sprintf("https://anikototv.to/ajax/episode/list/%s", animeID))
 	if err != nil {
 		return nil, fmt.Errorf("episode list failed: %w", err)
@@ -1087,8 +1059,17 @@ func (a *App) getAnikotoVideoURLs(animeID string, epNumber string) ([]StreamSour
 
 	// Step 2: Find the episode with matching data-num
 	epHTML := epListResp.Result.HTML
-	epRe := regexp.MustCompile(`<a[^>]*data-slug="([^"]+)"[^>]*data-num="([^"]+)"[^>]*data-mal="([^"]*)"`)
+	epRe := regexp.MustCompile(`data-slug="([^"]+)"[^>]*data-num="([^"]+)"[^>]*data-mal="([^"]*)"`)
 	epMatches := epRe.FindAllStringSubmatch(epHTML, -1)
+
+	// Also try the reverse order (data-num before data-slug)
+	if len(epMatches) == 0 {
+		epRe2 := regexp.MustCompile(`data-num="([^"]+)"[^>]*data-slug="([^"]+)"[^>]*data-mal="([^"]*)"`)
+		epMatches2 := epRe2.FindAllStringSubmatch(epHTML, -1)
+		for _, m := range epMatches2 {
+			epMatches = append(epMatches, []string{m[0], m[2], m[1], m[3]})
+		}
+	}
 
 	var epSlug, epMAL string
 	for _, m := range epMatches {
@@ -1100,8 +1081,7 @@ func (a *App) getAnikotoVideoURLs(animeID string, epNumber string) ([]StreamSour
 		}
 	}
 	if epSlug == "" {
-		// Fallback: try episode page directly
-		epSlug = "ep-" + epNumber
+		return nil, fmt.Errorf("episode %s not found", epNumber)
 	}
 
 	// Step 3: Get server list
@@ -1183,7 +1163,7 @@ func (a *App) getAnikotoVideoURLs(animeID string, epNumber string) ([]StreamSour
 
 	// Step 6: Also try mapper API for additional sources
 	if epMAL != "" && epSlug != "" {
-	 mapperURL := fmt.Sprintf("https://mapper.nekostream.site/api/mal/%s/%s/0", epMAL, epSlug)
+		mapperURL := fmt.Sprintf("https://mapper.nekostream.site/api/mal/%s/%s/0", epMAL, epSlug)
 		mResp, err := anikotoRequest("GET", mapperURL)
 		if err == nil {
 			defer mResp.Body.Close()
@@ -1334,7 +1314,7 @@ func (a *App) GetStreamURL(episodeID string, animeTitle string) ([]StreamSource,
 		var akErr error
 		for _, t := range titles {
 			log.Printf("[Stream] Searching AniKoto for: %s ep %s", t, epNumber)
-			animeID, _, searchErr := a.searchAnikoto(t)
+			animeID, searchErr := a.searchAnikoto(t)
 			if searchErr != nil {
 				akErr = searchErr
 				continue
