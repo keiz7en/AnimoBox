@@ -1079,45 +1079,55 @@ func (a *App) getAnikotoVideoURLs(animeID string, epNumber string) ([]StreamSour
 
 	var sources []StreamSource
 
-	// Step 3: Use mapper API (primary source)
+	// Step 3: Get mapper API response
 	mapperURL := fmt.Sprintf("https://mapper.nekostream.site/api/mal/%s/%s/%s", epMAL, epSlug, epTimestamp)
 	mResp, err := anikotoRequest("GET", mapperURL)
-	if err == nil {
-		defer mResp.Body.Close()
-		var mapperResp map[string]interface{}
-		if err := json.NewDecoder(mResp.Body).Decode(&mapperResp); err == nil {
-			for sourceName, sourceData := range mapperResp {
-				if sourceName == "status" {
-					continue
-				}
-				sd, ok := sourceData.(map[string]interface{})
-				if !ok {
-					continue
-				}
+	if err != nil {
+		return nil, fmt.Errorf("mapper API failed: %w", err)
+	}
+	defer mResp.Body.Close()
 
-				// Sub
-				if sub, ok := sd["sub"].(map[string]interface{}); ok {
-					if subURL, ok := sub["url"].(string); ok && subURL != "" {
-						// Decode base64 URL if it looks encoded
-						decodedURL := decodeAnikotoURL(subURL)
-						sources = append(sources, StreamSource{
-							Server: fmt.Sprintf("AniKoto %s Sub", sourceName),
-							Type:   "video",
-							Links:  []StreamLink{{URL: decodedURL, Quality: "sub"}},
-						})
-					}
-				}
+	var mapperResp map[string]interface{}
+	if err := json.NewDecoder(mResp.Body).Decode(&mapperResp); err != nil {
+		return nil, fmt.Errorf("mapper parse failed: %w", err)
+	}
 
-				// Dub
-				if dub, ok := sd["dub"].(map[string]interface{}); ok {
-					if dubURL, ok := dub["url"].(string); ok && dubURL != "" {
-						decodedURL := decodeAnikotoURL(dubURL)
-						sources = append(sources, StreamSource{
-							Server: fmt.Sprintf("AniKoto %s Dub", sourceName),
-							Type:   "video",
-							Links:  []StreamLink{{URL: decodedURL, Quality: "dub"}},
-						})
-					}
+	// Step 4: For each source, decode the encrypted URL via ajax/server endpoint
+	for sourceName, sourceData := range mapperResp {
+		if sourceName == "status" {
+			continue
+		}
+		sd, ok := sourceData.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		// Sub
+		if sub, ok := sd["sub"].(map[string]interface{}); ok {
+			if encURL, ok := sub["url"].(string); ok && encURL != "" {
+				if decoded, err := a.resolveAnikotoURL(encURL); err == nil && decoded != "" {
+					sources = append(sources, StreamSource{
+						Server: fmt.Sprintf("AniKoto %s Sub", sourceName),
+						Type:   "video",
+						Links:  []StreamLink{{URL: decoded, Quality: "sub"}},
+					})
+				} else {
+					log.Printf("[AniKoto] Failed to decode %s sub: %v", sourceName, err)
+				}
+			}
+		}
+
+		// Dub
+		if dub, ok := sd["dub"].(map[string]interface{}); ok {
+			if encURL, ok := dub["url"].(string); ok && encURL != "" {
+				if decoded, err := a.resolveAnikotoURL(encURL); err == nil && decoded != "" {
+					sources = append(sources, StreamSource{
+						Server: fmt.Sprintf("AniKoto %s Dub", sourceName),
+						Type:   "video",
+						Links:  []StreamLink{{URL: decoded, Quality: "dub"}},
+					})
+				} else {
+					log.Printf("[AniKoto] Failed to decode %s dub: %v", sourceName, err)
 				}
 			}
 		}
@@ -1129,18 +1139,51 @@ func (a *App) getAnikotoVideoURLs(animeID string, epNumber string) ([]StreamSour
 	return sources, nil
 }
 
-func decodeAnikotoURL(encoded string) string {
-	// Try base64 decode
-	if decoded, err := base64.StdEncoding.DecodeString(encoded); err == nil {
-		if s := string(decoded); strings.Contains(s, "http") {
-			return s
+// resolveAnikotoURL takes the encrypted URL from mapper, passes it through
+// the AniKoto ajax/server endpoint, then decodes the base64 stream URL.
+func (a *App) resolveAnikotoURL(encURL string) (string, error) {
+	// Step A: Call ajax/server?get={encURL} to get the wrapper URL
+	vResp, err := anikotoRequest("GET", fmt.Sprintf("https://anikototv.to/ajax/server?get=%s", encURL))
+	if err != nil {
+		return "", fmt.Errorf("server get failed: %w", err)
+	}
+	defer vResp.Body.Close()
+
+	var vRespData struct {
+		Status int `json:"status"`
+		Result struct {
+			URL string `json:"url"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(vResp.Body).Decode(&vRespData); err != nil {
+		return "", fmt.Errorf("server response parse failed: %w", err)
+	}
+	if vRespData.Result.URL == "" {
+		return "", fmt.Errorf("empty URL from server")
+	}
+
+	wrapperURL := vRespData.Result.URL
+	log.Printf("[AniKoto] Wrapper URL: %s", wrapperURL[:min(80, len(wrapperURL))])
+
+	// Step B: Decode base64 after # in the wrapper URL
+	// Format: https://example.com/player/plyr.php#base64data
+	if idx := strings.LastIndex(wrapperURL, "#"); idx >= 0 {
+		b64Part := wrapperURL[idx+1:]
+		if decoded, err := base64.StdEncoding.DecodeString(b64Part); err == nil {
+			streamURL := string(decoded)
+			if strings.Contains(streamURL, "http") {
+				log.Printf("[AniKoto] Decoded stream: %s", streamURL[:min(80, len(streamURL))])
+				return streamURL, nil
+			}
 		}
 	}
-	// Try raw URL
-	if strings.Contains(encoded, "http") {
-		return encoded
+
+	// If no # or decode failed, try the URL directly
+	if strings.Contains(wrapperURL, "http") {
+		return wrapperURL, nil
 	}
-	return encoded
+
+	return "", fmt.Errorf("could not decode URL")
 }
 
 func (a *App) GetStreamURL(episodeID string, animeTitle string) ([]StreamSource, error) {
