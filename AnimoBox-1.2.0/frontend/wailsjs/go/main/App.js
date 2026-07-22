@@ -10,6 +10,10 @@ export function AddToLibrary(arg1) {
   return window['go']['main']['App']['AddToLibrary'](arg1);
 }
 
+export function BrowseVLCPath() {
+  return window['go']['main']['App']['BrowseVLCPath']();
+}
+
 export function ClearHistory() {
   return window['go']['main']['App']['ClearHistory']();
 }
@@ -40,6 +44,10 @@ export function GetAnimeDetails(arg1) {
 
 export function GetAppVersion() {
   return window['go']['main']['App']['GetAppVersion']();
+}
+
+export function GetCustomVLCPath() {
+  return window['go']['main']['App']['GetCustomVLCPath']();
 }
 
 export function GetDownloads() {
@@ -166,6 +174,10 @@ export function SearchAnime(arg1, arg2) {
   return window['go']['main']['App']['SearchAnime'](arg1, arg2);
 }
 
+export function SetCustomVLCPath(arg1) {
+  return window['go']['main']['App']['SetCustomVLCPath'](arg1);
+}
+
 export function SetNotificationsEnabled(arg1) {
   return window['go']['main']['App']['SetNotificationsEnabled'](arg1);
 }
@@ -176,6 +188,10 @@ export function SetSetting(arg1, arg2) {
 
 export function SyncToMAL() {
   return window['go']['main']['App']['SyncToMAL']();
+}
+
+export function TestNotification() {
+  return window['go']['main']['App']['TestNotification']();
 }
 
 export function UpdateLibraryItem(arg1, arg2, arg3, arg4) {

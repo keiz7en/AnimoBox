@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { IconSettings, IconExternalLink, IconRefresh, IconDownload, IconCheck, IconPlayerPlay, IconBell, IconBellOff } from '@tabler/icons-react';
-import { EnsureTools, GetMALStatus, GetMALAuthURL, SyncToMAL, GetDownloads, GetAppVersion, GetNotificationsEnabled, SetNotificationsEnabled } from '../../wailsjs/go/main/App';
+import { IconSettings, IconExternalLink, IconRefresh, IconDownload, IconCheck, IconPlayerPlay, IconBell, IconBellOff, IconFolder } from '@tabler/icons-react';
+import { EnsureTools, GetMALStatus, GetMALAuthURL, SyncToMAL, GetDownloads, GetAppVersion, GetNotificationsEnabled, SetNotificationsEnabled, GetCustomVLCPath, BrowseVLCPath, TestNotification } from '../../wailsjs/go/main/App';
 
 export default function Settings() {
   const [malStatus, setMalStatus] = useState('not_connected');
@@ -8,6 +8,8 @@ export default function Settings() {
   const [version, setVersion] = useState('');
   const [toolsInstalled, setToolsInstalled] = useState(false);
   const [notifEnabled, setNotifEnabled] = useState(false);
+  const [vlcPath, setVlcPath] = useState('');
+  const [vlcCustomPath, setVlcCustomPath] = useState('');
 
   useEffect(() => { loadSettings(); }, []);
 
@@ -22,6 +24,8 @@ export default function Settings() {
       try { await EnsureTools(); setToolsInstalled(true); } catch { setToolsInstalled(false); }
       const notifVal = await GetNotificationsEnabled();
       setNotifEnabled(notifVal === 'true');
+      const customPath = await GetCustomVLCPath();
+      setVlcCustomPath(customPath as string || '');
     } catch { /* ignore */ }
   };
 
@@ -37,6 +41,22 @@ export default function Settings() {
     } catch { /* ignore */ }
   };
 
+  const handleTestNotification = async () => {
+    try { await TestNotification(); } catch {}
+  };
+
+  const handleBrowseVLC = async () => {
+    try {
+      const path = await BrowseVLCPath();
+      if (path) {
+        setVlcCustomPath(path);
+        setToolsInstalled(true);
+      }
+    } catch {}
+  };
+
+  const vlcFound = vlcCustomPath !== '' || toolsInstalled;
+
   return (
     <div className="page-container fade-in">
       <div className="row-header"><IconSettings size={22} style={{ color: 'var(--accent)' }} /> Settings</div>
@@ -46,17 +66,28 @@ export default function Settings() {
             <IconPlayerPlay size={18} style={{ color: 'var(--accent)' }} /> Player & Tools
           </h3>
           <p style={{ fontSize: 13, color: 'var(--text-sub)', marginBottom: 12 }}>
-            VLC player is bundled with the application.
+            Select the VLC player location on your device.
           </p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
             <span className="badge" style={{
-              background: toolsInstalled ? 'rgba(0,230,118,0.15)' : 'rgba(255,193,7,0.15)',
-              color: toolsInstalled ? '#51cf66' : '#ffc107',
+              background: vlcFound ? 'rgba(0,230,118,0.15)' : 'rgba(255,193,7,0.15)',
+              color: vlcFound ? '#51cf66' : '#ffc107',
             }}>
-              {toolsInstalled ? <IconCheck size={14} /> : <IconDownload size={14} />}
-              {toolsInstalled ? 'VLC Found' : 'VLC Not Found'}
+              {vlcFound ? <IconCheck size={14} /> : <IconDownload size={14} />}
+              {vlcFound ? 'VLC Found' : 'VLC Not Found'}
             </span>
+            {vlcCustomPath && (
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                {vlcCustomPath}
+              </span>
+            )}
           </div>
+          <button className="btn btn-accent" onClick={handleBrowseVLC} style={{ fontSize: 12, height: 32, gap: 6 }}>
+            <IconFolder size={14} /> Browse for VLC
+          </button>
+          <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>
+            Browse and select vlc.exe on your computer. Leave empty to use bundled VLC.
+          </p>
         </div>
 
         <div className="settings-card">
@@ -88,6 +119,11 @@ export default function Settings() {
                 transition: 'transform 0.2s',
               }} />
             </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+            <button className="btn btn-outline" onClick={handleTestNotification} style={{ fontSize: 12, height: 32, gap: 4 }}>
+              <IconBell size={14} /> Test Notification
+            </button>
           </div>
           <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 10 }}>
             Only checks anime marked as "Watching" in your library. Close the app to stop checking.

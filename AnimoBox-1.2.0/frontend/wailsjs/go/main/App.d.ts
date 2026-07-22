@@ -6,6 +6,8 @@ export function AddToHistory(arg1:string,arg2:string,arg3:string,arg4:string):Pr
 
 export function AddToLibrary(arg1:main.LibraryAnime):Promise<void>;
 
+export function BrowseVLCPath():Promise<string>;
+
 export function ClearHistory():Promise<void>;
 
 export function CloseWindow():Promise<void>;
@@ -21,6 +23,8 @@ export function ExportLibrary():Promise<string>;
 export function GetAnimeDetails(arg1:string):Promise<main.Anime>;
 
 export function GetAppVersion():Promise<string>;
+
+export function GetCustomVLCPath():Promise<string>;
 
 export function GetDownloads():Promise<Array<string>>;
 
@@ -84,10 +88,14 @@ export function SaveLibraryToFile():Promise<void>;
 
 export function SearchAnime(arg1:string,arg2:number):Promise<Array<main.SearchResult>>;
 
+export function SetCustomVLCPath(arg1:string):Promise<void>;
+
 export function SetNotificationsEnabled(arg1:boolean):Promise<void>;
 
 export function SetSetting(arg1:string,arg2:string):Promise<void>;
 
 export function SyncToMAL():Promise<void>;
+
+export function TestNotification():Promise<void>;
 
 export function UpdateLibraryItem(arg1:string,arg2:string,arg3:number,arg4:number):Promise<void>;

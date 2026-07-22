@@ -2355,6 +2355,13 @@ func (a *App) toolsDir() string {
 }
 
 func (a *App) vlcPath() string {
+	// Check custom path first
+	if custom := a.GetSetting("vlc_custom_path"); custom != "" {
+		if _, err := os.Stat(custom); err == nil {
+			return custom
+		}
+	}
+
 	exe, err := os.Executable()
 	if err == nil {
 		exeDir := filepath.Dir(exe)
@@ -2385,6 +2392,37 @@ func (a *App) vlcPath() string {
 		return p
 	}
 	return "vlc"
+}
+
+func (a *App) GetCustomVLCPath() string {
+	return a.GetSetting("vlc_custom_path")
+}
+
+func (a *App) SetCustomVLCPath(path string) error {
+	return a.SetSetting("vlc_custom_path", path)
+}
+
+func (a *App) BrowseVLCPath() string {
+	filePath, err := wruntime.OpenFileDialog(a.ctx, wruntime.OpenDialogOptions{
+		Title: "Select VLC Player Executable",
+		Filters: []wruntime.FileFilter{
+			{DisplayName: "Executables (*.exe)", Pattern: "*.exe"},
+		},
+	})
+	if err != nil || filePath == "" {
+		return ""
+	}
+	_ = a.SetCustomVLCPath(filePath)
+	return filePath
+}
+
+func (a *App) TestNotification() error {
+	_ = wruntime.SendNotification(a.ctx, wruntime.NotificationOptions{
+		ID:    "animobox-test",
+		Title: "AnimoBox",
+		Body:  "Notifications are working!",
+	})
+	return nil
 }
 
 func (a *App) EnsureTools() error {
