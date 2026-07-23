@@ -50,7 +50,7 @@ export default function Settings() {
   };
 
   const handleOpenBrowser = async () => {
-    try { await OpenInBrowser('https://www.google.com'); } catch {}
+    try { await OpenInBrowser('https://github.com/keiz7en/AnimoBox'); } catch {}
   };
 
   const handleBrowseVLC = async () => {
